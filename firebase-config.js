@@ -1,12 +1,11 @@
-// 1) Pega aquí la configuración de tu app web de Firebase
-//    (Consola de Firebase > Configuración del proyecto > Tus apps > Configuración del SDK)
+// Configuración de Firebase de CompetiPadel
 window.FIREBASE_CONFIG = {
-  apiKey: "PEGA_AQUI",
-  authDomain: "PEGA_AQUI.firebaseapp.com",
-  projectId: "PEGA_AQUI",
-  storageBucket: "PEGA_AQUI.appspot.com",
-  messagingSenderId: "PEGA_AQUI",
-  appId: "PEGA_AQUI"
+  apiKey: "AIzaSyBPF8hgJb5PvL12sHnayTcE-AzpIl5vzVM",
+  authDomain: "competipadel-e290b.firebaseapp.com",
+  projectId: "competipadel-e290b",
+  storageBucket: "competipadel-e290b.firebasestorage.app",
+  messagingSenderId: "997100846159",
+  appId: "1:997100846159:web:d38d4a3f28e2ecb458fe3a"
 };
-// 2) Tu celular a 10 dígitos: al registrarte con este número serás ADMINISTRADOR
-window.ADMIN_TEL = "0000000000";
+// Celular del administrador
+window.ADMIN_TEL = "3111301279";
