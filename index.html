@@ -923,7 +923,9 @@ function uploadMany(dataUrls) {
 }
 
 // =================== LÓGICA DE TORNEOS ===================
-function catCfg(t, cat) { var c = (t.catCfg || {})[cat] || {}; return { tam: +c.tam || 4, pasan: c.pasan != null ? +c.pasan : 2, extra: +c.extra || 0 }; }
+function catCfg(t, cat) { var c = (t.catCfg || {})[cat] || {}; return { tam: +c.tam || 4, pasan: c.pasan != null ? +c.pasan : (t.tipo === 'liga' ? 4 : 2), extra: +c.extra || 0 }; }
+function isLiga(t) { return t && t.tipo === 'liga'; }
+function addDays(f, n) { var p = String(f || today()).split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2] + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function pairsOf(tid, cat) { return (X.PT[tid] || []).filter(function (p) { return !cat || p.cat === cat; }); }
 function matchesOf(tid, cat, fase) { return (X.MT[tid] || []).filter(function (m) { return (!cat || m.cat === cat) && (!fase || m.fase === fase); }); }
 function gName(i) { var s = ''; i++; while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; }
@@ -989,6 +991,44 @@ function drawGroups(t, cat) {
   return chain.then(function () { return save('parejas', upP); }).then(function () { return save('partidos', all); });
 }
 function gIdx(g) { var n = 0; for (var i = 0; i < g.length; i++) n = n * 26 + (g.charCodeAt(i) - 64); return n - 1; }
+function scheduleLeague(t, ms, keep) {
+  var byJ = {};
+  ms.forEach(function (m) { (byJ[m.jornada] = byJ[m.jornada] || []).push(m); });
+  Object.keys(byJ).forEach(function (j) {
+    var list = byJ[j], start = 1;
+    if (keep) (X.MT[t.id] || []).forEach(function (m) { if (m.fase === 'liga' && m.jornada == j && m.estado === 'fin' && m.turno >= start) start = m.turno + 1; });
+    list.forEach(function (m, i) { m._k = (t.cats || []).indexOf(m.cat) * 1000 + i; });
+    schedule(t, list, start);
+  });
+}
+function genLeague(t, cat) {
+  var pairs = pairsOf(t.id, cat);
+  if (pairs.length < 2) return Promise.reject(new Error('Se necesitan al menos 2 parejas en ' + cat));
+  var rounds = rrRounds(shuffle(pairs.map(function (p) { return p.id; }))), R = rounds.length;
+  var J = Math.max(1, +t.jornadas || R), cada = +t.cada || 7, newM = [];
+  for (var j = 0; j < J; j++) {
+    var vuelta = Math.floor(j / R) % 2 === 1;
+    rounds[j % R].forEach(function (pr) { newM.push({ id: uid('m'), torneoId: t.id, cat: cat, fase: 'liga', jornada: j + 1, fecha: addDays(t.fecha, j * cada), pa: vuelta ? pr[1] : pr[0], pb: vuelta ? pr[0] : pr[1], estado: 'pend' }); });
+  }
+  var oldIds = matchesOf(t.id, cat).map(function (m) { return m.id; });
+  var others = matchesOf(t.id, null, 'liga').filter(function (m) { return m.cat !== cat && m.estado !== 'fin'; }).map(function (m) { return Object.assign({}, m); });
+  var all = newM.concat(others);
+  scheduleLeague(t, all, false);
+  var ch = oldIds.length ? del('partidos', oldIds) : Promise.resolve();
+  return ch.then(function () { return save('partidos', all, 'Calendario de ' + J + ' jornadas listo'); });
+}
+function reschedLeague(t) {
+  var pend = (X.MT[t.id] || []).filter(function (m) { return m.fase === 'liga' && m.estado !== 'fin'; }).map(function (m) { return Object.assign({}, m); });
+  if (!pend.length) return Promise.resolve();
+  scheduleLeague(t, pend, true);
+  return save('partidos', pend, 'Canchas y horarios reasignados');
+}
+function curJornada(t) {
+  var ms = (X.MT[t.id] || []).filter(function (m) { return m.fase === 'liga'; }), j = null;
+  ms.forEach(function (m) { if (m.estado !== 'fin' && (j === null || m.jornada < j)) j = m.jornada; });
+  if (j === null) ms.forEach(function (m) { if (j === null || m.jornada > j) j = m.jornada; });
+  return j;
+}
 function reschedule(t) {
   var pend = (X.MT[t.id] || []).filter(function (m) { return m.estado !== 'fin' && m.fase === 'grupo'; }).map(function (m) {
     var c = Object.assign({}, m); c._k = (m._rr || 0) * 100000 + gIdx(m.grupo || 'A') * 10 + (t.cats || []).indexOf(m.cat); return c;
@@ -997,8 +1037,8 @@ function reschedule(t) {
   schedule(t, pend, lastTurno(t.id) + 1);
   return save('partidos', pend, 'Canchas y horarios reasignados');
 }
-function h2h(tid, cat, a, b) {
-  var ms = matchesOf(tid, cat, 'grupo');
+function h2h(tid, cat, a, b, fase) {
+  var ms = matchesOf(tid, cat, fase || 'grupo');
   for (var i = 0; i < ms.length; i++) { var m = ms[i]; if (m.estado !== 'fin') continue; if (m.pa === a && m.pb === b) return (+m.ga > +m.gb) ? -1 : 1; if (m.pa === b && m.pb === a) return (+m.gb > +m.ga) ? -1 : 1; }
   return 0;
 }
@@ -1013,7 +1053,20 @@ function groupTable(t, cat, g) {
   return { rows: rows, complete: complete, ms: ms };
 }
 function groupsOf(t, cat) { var s = {}; pairsOf(t.id, cat).forEach(function (p) { if (p.grupo) s[p.grupo] = 1; }); return Object.keys(s).sort(function (a, b) { return a.length - b.length || (a < b ? -1 : 1); }); }
+function leagueTable(t, cat) {
+  var pairs = pairsOf(t.id, cat), ms = matchesOf(t.id, cat, 'liga');
+  var R = {}; pairs.forEach(function (p) { R[p.id] = { p: p, pj: 0, pg: 0, pp: 0, gf: 0, gc: 0 }; });
+  ms.forEach(function (m) { if (m.estado !== 'fin') return; var a = R[m.pa], b = R[m.pb]; if (!a || !b) return; var ga = +m.ga, gb = +m.gb; a.pj++; b.pj++; a.gf += ga; a.gc += gb; b.gf += gb; b.gc += ga; if (ga > gb) { a.pg++; b.pp++; } else if (gb > ga) { b.pg++; a.pp++; } });
+  var rows = Object.keys(R).map(function (k) { return R[k]; });
+  rows.sort(function (x, y) { return y.pg - x.pg || h2h(t.id, cat, x.p.id, y.p.id, 'liga') || (y.gf - y.gc) - (x.gf - x.gc) || y.gf - x.gf || y.pj - x.pj; });
+  return { rows: rows, complete: ms.length > 0 && ms.every(function (m) { return m.estado === 'fin'; }), ms: ms };
+}
 function catStatus(t, cat) {
+  if (isLiga(t)) {
+    var lc = catCfg(t, cat), lt = leagueTable(t, cat), st = {};
+    lt.rows.forEach(function (r, i) { st[r.p.id] = i < lc.pasan ? (lt.complete ? 'q' : 'pend') : (lt.complete && lc.pasan > 0 ? 'out' : 'pend'); });
+    return { gs: lt.ms.length ? ['Liga'] : [], tabs: { Liga: lt }, allDone: lt.complete, status: st, cfg: lc };
+  }
   var cfg = catCfg(t, cat), gs = groupsOf(t, cat), tabs = {}, allDone = gs.length > 0, status = {};
   gs.forEach(function (g) { var tb = groupTable(t, cat, g); tabs[g] = tb; if (!tb.complete) allDone = false; });
   var extras = {};
@@ -1209,8 +1262,9 @@ VIEWS.inicio = function () {
   return html;
 };
 function torneoCard(t) {
+  var lg = isLiga(t) ? '<span class="bdg y">LIGA' + (curJornada(t) ? ' · J' + curJornada(t) + '/' + (t.jornadas || '') : '') + '</span>' : '';
   var sd = X.SD[t.sedeId], np = (X.PT[t.id] || []).length, ms = X.MT[t.id] || [], fin = ms.filter(function (m) { return m.estado === 'fin'; }).length;
-  return '<div class="card tap glow" data-a="go" data-v="torneo" data-id="' + t.id + '"><div class="row"><div class="ini" style="width:50px;height:50px">' + (sd && sd.logo ? img(sd.logo) : ICON.trophy.replace('<svg', '<svg width="24"')) + '</div><div class="grow"><div class="b ell" style="font-size:16px">' + h(t.nombre) + '</div><div class="sm mut ell">' + h(sd ? sd.nombre : '') + ' · ' + fdate(t.fecha) + '</div><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">' + (t.cats || []).map(function (c) { return '<span class="bdg">' + h(c) + '</span>'; }).join('') + '</div></div><div style="text-align:right"><div class="elo">' + np + '</div><div class="xs mut">parejas</div>' + (ms.length ? '<div class="xs mut" style="margin-top:4px">' + fin + '/' + ms.filter(function (m) { return m.estado !== 'bye'; }).length + '</div>' : '') + '</div></div></div>';
+  return '<div class="card tap glow" data-a="go" data-v="torneo" data-id="' + t.id + '"><div class="row"><div class="ini" style="width:50px;height:50px">' + (sd && sd.logo ? img(sd.logo) : ICON.trophy.replace('<svg', '<svg width="24"')) + '</div><div class="grow"><div class="b ell" style="font-size:16px">' + h(t.nombre) + '</div><div class="sm mut ell">' + h(sd ? sd.nombre : '') + ' · ' + fdate(t.fecha) + '</div><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">' + lg + (t.cats || []).map(function (c) { return '<span class="bdg">' + h(c) + '</span>'; }).join('') + '</div></div><div style="text-align:right"><div class="elo">' + np + '</div><div class="xs mut">parejas</div>' + (ms.length ? '<div class="xs mut" style="margin-top:4px">' + fin + '/' + ms.filter(function (m) { return m.estado !== 'bye'; }).length + '</div>' : '') + '</div></div></div>';
 }
 function retaCard(r) {
   var sd = X.SD[r.sedeId], n = r.modo === 'par' ? (r.parejas || []).length * 2 : (r.jugadores || []).length;
@@ -1299,17 +1353,18 @@ function matchCard(m, courtLbl) {
   var sa = fin ? (ga > gb ? ' w' : ga < gb ? ' l' : '') : '', sb = fin ? (gb > ga ? ' w' : gb < ga ? ' l' : '') : '';
   var lbl = courtLbl || (m.cancha || '–');
   return '<div class="mt' + (fin ? ' fin' : '') + '" data-a="score" data-id="' + m.id + '"><div class="ct"><b' + (String(lbl).length > 2 ? ' style="font-size:13px"' : '') + '>' + h(lbl) + '</b><span>' + (courtLbl ? 'CANCHA' : 'CANCHA') + '</span></div><div class="grow col" style="justify-content:center">' +
-    (m.torneoId ? '<div class="xs dim">' + (m.fase === 'grupo' ? h(m.cat) + ' · Grupo ' + h(m.grupo) : h(m.cat) + ' · ' + h(m.label || '')) + (m.hora ? ' · ' + h(m.hora) : '') + '</div>' : '') +
+    (m.torneoId ? '<div class="xs dim">' + (m.fase === 'grupo' ? h(m.cat) + ' · Grupo ' + h(m.grupo) : m.fase === 'liga' ? h(m.cat) + ' · Jornada ' + m.jornada : h(m.cat) + ' · ' + h(m.label || '')) + (m.hora ? ' · ' + h(m.hora) : '') + '</div>' : '') +
     '<div class="sd' + sa + '"><span class="n">' + A + '</span><span class="s">' + (fin ? ga : '') + '</span></div><div class="sd' + sb + '"><span class="n">' + B + '</span><span class="s">' + (fin ? gb : '') + '</span></div></div></div>';
 }
 
 // ---------- TORNEOS ----------
 VIEWS.torneos = function () {
-  var list = S.d.torneos.slice().sort(function (a, b) { return String(b.fecha).localeCompare(a.fecha); });
-  var html = '<div class="row"><h1 class="grow">Torneos</h1></div>';
+  var tl = S.filt.tl || 'torneo';
+  var list = S.d.torneos.filter(function (t) { return (t.tipo === 'liga') === (tl === 'liga'); }).sort(function (a, b) { return String(b.fecha).localeCompare(a.fecha); });
+  var html = '<div class="row"><h1 class="grow">' + (tl === 'liga' ? 'Ligas' : 'Torneos') + '</h1></div><div class="chips" style="margin-top:12px"><button class="chip ' + (tl === 'torneo' ? 'on' : '') + '" data-a="filt" data-k="tl" data-v="torneo">' + ICON.trophy.replace('<svg', '<svg width="15"') + ' Torneos</button><button class="chip ' + (tl === 'liga' ? 'on' : '') + '" data-a="filt" data-k="tl" data-v="liga">' + ICON.rank.replace('<svg', '<svg width="15"') + ' Ligas</button></div>';
   if (!isOrg() && S.me.kind === 'j') html += '<div class="card" style="margin-top:12px;border-style:dashed"><div class="row">' + ICON.shield.replace('<svg', '<svg width="26" style="color:var(--neon);flex:none"') + '<div class="sm mut">Para crear torneos necesitas acceso de organizador. Pídelo al administrador de CompetiPadel.</div></div></div>';
-  html += list.length ? '<div class="gridA" style="margin-top:12px">' + list.map(torneoCard).join('') + '</div>' : empty('trophy', 'Todavía no hay torneos.');
-  if (isOrg()) html += '<button class="btn pri fab" data-a="go" data-v="torneoForm">' + ICON.plus + 'Crear torneo</button>';
+  html += list.length ? '<div class="gridA" style="margin-top:12px">' + list.map(torneoCard).join('') + '</div>' : empty('trophy', tl === 'liga' ? 'Todavía no hay ligas.' : 'Todavía no hay torneos.');
+  if (isOrg()) html += '<button class="btn pri fab" data-a="go" data-v="torneoForm">' + ICON.plus + (tl === 'liga' ? 'Crear liga' : 'Crear torneo') + '</button>';
   return html;
 };
 var TF = null;
@@ -1317,33 +1372,37 @@ VIEWS.torneoForm = function (rt) {
   if (!isOrg()) return empty('shield', 'No tienes acceso para crear torneos.');
   if (!TF || TF._for !== (rt.id || 'new')) {
     var ex = rt.id ? X.T[rt.id] : null;
-    TF = ex ? JSON.parse(JSON.stringify(ex)) : { nombre: '', sedeId: (S.d.sedes[0] || {}).id || '', fecha: today(), hora: '09:00', dur: 40, formato: '1 set a 6 juegos', canchas: (S.d.sedes[0] || {}).canchas || 4, cats: [], catCfg: {}, elite: [], estado: 'insc' };
+    TF = ex ? JSON.parse(JSON.stringify(ex)) : { tipo: S.filt.tl === 'liga' ? 'liga' : 'torneo', nombre: '', sedeId: (S.d.sedes[0] || {}).id || '', fecha: today(), hora: S.filt.tl === 'liga' ? '19:00' : '09:00', dur: 40, formato: '1 set a 6 juegos', canchas: (S.d.sedes[0] || {}).canchas || 4, cats: [], catCfg: {}, elite: [], estado: 'insc', jornadas: 10, cada: 7, cupo: 0 };
     TF._for = rt.id || 'new';
   }
-  var sp = activeSponsors();
-  return '<h1>' + (rt.id ? 'Editar torneo' : 'Crear torneo') + '</h1><div class="card" style="margin-top:12px">' +
-    '<div class="fld"><label>Nombre del torneo</label><input class="inp" data-tf="nombre" value="' + h(TF.nombre) + '" placeholder="Ej. Torneo Diamante Navideño"></div>' +
+  var sp = activeSponsors(), L = TF.tipo === 'liga', W = L ? 'liga' : 'torneo';
+  return '<h1>' + (rt.id ? 'Editar ' + W : 'Crear ' + W) + '</h1><div class="card" style="margin-top:12px">' +
+    (!rt.id ? '<div class="fld"><label>Tipo</label><div class="seg"><button class="' + (!L ? 'on' : '') + '" data-a="tfSet" data-k="tipo" data-v="torneo">Torneo</button><button class="' + (L ? 'on' : '') + '" data-a="tfSet" data-k="tipo" data-v="liga">Liga</button></div><div class="xs mut" style="margin-top:4px">' + (L ? 'Liga: las parejas de cada categoría se enfrentan por jornadas, con tabla general y liguilla final opcional.' : 'Torneo: fase de grupos y eliminatoria en uno o varios días.') + '</div></div>' : '') +
+    '<div class="fld"><label>Nombre ' + (L ? 'de la liga' : 'del torneo') + '</label><input class="inp" data-tf="nombre" value="' + h(TF.nombre) + '" placeholder="' + (L ? 'Ej. Liga Diamante Invierno 2026' : 'Ej. Torneo Diamante Navideño') + '"></div>' +
     '<div class="fld"><label>Sede</label><select class="inp" data-tf="sedeId"><option value="">— Selecciona —</option>' + S.d.sedes.map(function (s) { return '<option value="' + s.id + '"' + (s.id === TF.sedeId ? ' selected' : '') + '>' + h(s.nombre) + '</option>'; }).join('') + '</select></div>' +
-    '<div class="grid2"><div class="fld"><label>Fecha</label><input class="inp" type="date" data-tf="fecha" value="' + h(TF.fecha) + '"></div><div class="fld"><label>Hora de inicio</label><input class="inp" type="time" data-tf="hora" value="' + h(TF.hora) + '"></div></div>' +
+    '<div class="grid2"><div class="fld"><label>' + (L ? 'Fecha jornada 1' : 'Fecha') + '</label><input class="inp" type="date" data-tf="fecha" value="' + h(TF.fecha) + '"></div><div class="fld"><label>Hora de inicio</label><input class="inp" type="time" data-tf="hora" value="' + h(TF.hora) + '"></div></div>' +
     '<div class="grid2"><div class="fld"><label>Canchas a usar</label><input class="inp" type="number" min="1" data-tf="canchas" value="' + h(TF.canchas) + '"></div><div class="fld"><label>Min. por partido</label><input class="inp" type="number" min="10" step="5" data-tf="dur" value="' + h(TF.dur) + '"></div></div>' +
+    (L ? '<div class="grid3"><div class="fld"><label>Jornadas</label><input class="inp" type="number" min="1" data-tf="jornadas" value="' + h(TF.jornadas) + '"></div><div class="fld"><label>Cada (días)</label><input class="inp" type="number" min="1" data-tf="cada" value="' + h(TF.cada) + '"></div><div class="fld"><label>Parejas máx.</label><input class="inp" type="number" min="0" data-tf="cupo" value="' + h(TF.cupo || 0) + '"></div></div><div class="xs dim" style="margin:-6px 0 12px">Parejas máx. es por categoría (0 = sin límite). Si hay más jornadas que rivales, se juega ida y vuelta.</div>' : '') +
     '<div class="fld"><label>Formato de partido</label><input class="inp" data-tf="formato" value="' + h(TF.formato) + '"></div>' +
     '<div class="fld"><label>Categorías que se juegan</label><div class="chips" style="flex-wrap:wrap">' + CATS.concat((TF.cats || []).filter(function (c) { return CATS.indexOf(c) < 0; })).map(function (c) { return '<button class="chip ' + ((TF.cats || []).indexOf(c) >= 0 ? 'on' : '') + '" data-a="tfCat" data-v="' + h(c) + '">' + h(c) + '</button>'; }).join('') + '</div><div class="row" style="gap:8px"><input class="inp" id="tfNewCat" placeholder="Otra (ej. 4ta Varonil)"><button class="btn sm" data-a="tfAddCat">Agregar</button></div></div>' +
-    (TF.cats.length ? '<div class="fld"><label>Configuración por categoría</label>' + TF.cats.map(function (c) { var cc = catCfg(TF, c); return '<div class="row" style="gap:8px;margin-bottom:8px"><span class="bdg" style="min-width:64px;justify-content:center">' + h(c) + '</span><select class="inp" style="height:40px" data-tfc="' + h(c) + '" data-f="tam">' + [3, 4, 5].map(function (n) { return '<option value="' + n + '"' + (cc.tam === n ? ' selected' : '') + '>Grupos de ' + n + '</option>'; }).join('') + '</select><select class="inp" style="height:40px" data-tfc="' + h(c) + '" data-f="pasan">' + [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (cc.pasan === n ? ' selected' : '') + '>Pasan ' + n + '</option>'; }).join('') + '</select><select class="inp" style="height:40px" data-tfc="' + h(c) + '" data-f="extra">' + [0, 1, 2, 3, 4, 6, 8].map(function (n) { return '<option value="' + n + '"' + (cc.extra === n ? ' selected' : '') + '>' + (n ? '+' + n + ' mejores' : 'Sin extra') + '</option>'; }).join('') + '</select></div>'; }).join('') + '<div class="xs dim">"+ mejores" agrega a los mejores del siguiente lugar (ej. mejores terceros).</div></div>' : '') +
+    (TF.cats.length && L ? '<div class="fld"><label>Liguilla por categoría</label>' + TF.cats.map(function (c) { var cc = catCfg(TF, c); return '<div class="row" style="gap:8px;margin-bottom:8px"><span class="bdg" style="min-width:64px;justify-content:center">' + h(c) + '</span><select class="inp" style="height:40px" data-tfc="' + h(c) + '" data-f="pasan">' + [0, 2, 4, 8, 16].map(function (n) { return '<option value="' + n + '"' + (cc.pasan === n ? ' selected' : '') + '>' + (n ? 'Pasan ' + n + ' a liguilla' : 'Sin liguilla') + '</option>'; }).join('') + '</select></div>'; }).join('') + '</div>' : '') +
+    (TF.cats.length && !L ? '<div class="fld"><label>Configuración por categoría</label>' + TF.cats.map(function (c) { var cc = catCfg(TF, c); return '<div class="row" style="gap:8px;margin-bottom:8px"><span class="bdg" style="min-width:64px;justify-content:center">' + h(c) + '</span><select class="inp" style="height:40px" data-tfc="' + h(c) + '" data-f="tam">' + [3, 4, 5].map(function (n) { return '<option value="' + n + '"' + (cc.tam === n ? ' selected' : '') + '>Grupos de ' + n + '</option>'; }).join('') + '</select><select class="inp" style="height:40px" data-tfc="' + h(c) + '" data-f="pasan">' + [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (cc.pasan === n ? ' selected' : '') + '>Pasan ' + n + '</option>'; }).join('') + '</select><select class="inp" style="height:40px" data-tfc="' + h(c) + '" data-f="extra">' + [0, 1, 2, 3, 4, 6, 8].map(function (n) { return '<option value="' + n + '"' + (cc.extra === n ? ' selected' : '') + '>' + (n ? '+' + n + ' mejores' : 'Sin extra') + '</option>'; }).join('') + '</select></div>'; }).join('') + '<div class="xs dim">"+ mejores" agrega a los mejores del siguiente lugar (ej. mejores terceros).</div></div>' : '') +
     '<div class="fld"><label>Patrocinadores ÉLITE del ranking (máx. 2)</label>' + (sp.length ? '<div class="chips" style="flex-wrap:wrap">' + sp.map(function (p) { return '<button class="chip ' + ((TF.elite || []).indexOf(p.id) >= 0 ? 'on' : '') + '" data-a="tfElite" data-v="' + p.id + '">' + h(p.nombre) + '</button>'; }).join('') + '</div>' : '<div class="sm mut">Registra patrocinadores primero.</div>') + '</div>' +
     '<div class="fld"><label>Estado</label><div class="seg">' + [['insc', 'Inscripciones'], ['juego', 'En juego'], ['fin', 'Terminado']].map(function (e) { return '<button class="' + (TF.estado === e[0] ? 'on' : '') + '" data-a="tfSet" data-k="estado" data-v="' + e[0] + '">' + e[1] + '</button>'; }).join('') + '</div></div></div>' +
-    '<div class="acts"><button class="btn ghost" data-a="back">Cancelar</button><button class="btn pri" data-a="tfSave">' + (rt.id ? 'Guardar' : 'Crear torneo') + '</button></div>' +
-    (rt.id && canT(X.T[rt.id]) ? '<button class="btn bad blk" style="margin-top:14px" data-a="tDel" data-id="' + rt.id + '">Borrar torneo</button>' : '');
+    '<div class="acts"><button class="btn ghost" data-a="back">Cancelar</button><button class="btn pri" data-a="tfSave">' + (rt.id ? 'Guardar' : 'Crear ' + W) + '</button></div>' +
+    (rt.id && canT(X.T[rt.id]) ? '<button class="btn bad blk" style="margin-top:14px" data-a="tDel" data-id="' + rt.id + '">Borrar ' + W + '</button>' : '');
 };
 VIEWS.torneo = function (rt) {
   var t = X.T[rt.id]; if (!t) return empty('trophy', 'El torneo no existe.');
   var sd = X.SD[t.sedeId], sub = S.filt['t' + t.id] || 'parejas', can = canT(t);
   var cats = t.cats || []; var cat = S.cat[t.id] && cats.indexOf(S.cat[t.id]) >= 0 ? S.cat[t.id] : cats[0];
-  var html = '<div class="tban"><div class="row"><div class="lg">' + (sd && sd.logo ? img(sd.logo) : ICON.trophy.replace('<svg', '<svg width="28"')) + '</div><div class="grow"><h1>' + h(t.nombre) + '</h1><div class="sm mut">' + h(sd ? sd.nombre : '') + ' · ' + fdate(t.fecha) + ' · ' + h(t.hora || '') + '</div><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap"><span class="bdg y">' + (t.canchas || 0) + ' canchas</span><span class="bdg v">' + h(t.formato || '') + '</span><span class="bdg ' + (t.estado === 'fin' ? 'g' : '') + '">' + ({ insc: 'Inscripciones', juego: 'En juego', fin: 'Terminado' }[t.estado] || '') + '</span></div></div></div>' +
+  var html = '<div class="tban"><div class="row"><div class="lg">' + (sd && sd.logo ? img(sd.logo) : ICON.trophy.replace('<svg', '<svg width="28"')) + '</div><div class="grow"><h1>' + h(t.nombre) + '</h1><div class="sm mut">' + h(sd ? sd.nombre : '') + ' · ' + fdate(t.fecha) + ' · ' + h(t.hora || '') + '</div><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">' + (isLiga(t) ? '<span class="bdg y">LIGA · ' + (t.jornadas || 0) + ' jornadas · cada ' + (t.cada || 7) + ' días</span>' : '') + '<span class="bdg y">' + (t.canchas || 0) + ' canchas</span><span class="bdg v">' + h(t.formato || '') + '</span><span class="bdg ' + (t.estado === 'fin' ? 'g' : '') + '">' + ({ insc: 'Inscripciones', juego: 'En juego', fin: 'Terminado' }[t.estado] || '') + '</span></div></div></div>' +
     '<div class="row" style="gap:8px;margin-top:12px"><button class="btn sm pri" data-a="tvOpen" data-id="' + t.id + '">' + ICON.tv + 'Pantalla TV</button>' + (can ? '<button class="btn sm" data-a="go" data-v="torneoForm" data-id="' + t.id + '">' + ICON.edit + 'Editar</button>' : '') + '</div></div>';
-  var subs = [['parejas', 'Parejas'], ['grupos', 'Grupos'], ['partidos', 'Partidos'], ['cuadro', 'Eliminatoria'], ['ranking', 'Ranking']];
+  var subs = isLiga(t) ? [['parejas', 'Parejas'], ['tabla', 'Tabla'], ['jornadas', 'Jornadas'], ['cuadro', 'Liguilla'], ['ranking', 'Ranking']] : [['parejas', 'Parejas'], ['grupos', 'Grupos'], ['partidos', 'Partidos'], ['cuadro', 'Eliminatoria'], ['ranking', 'Ranking']];
+  if (!subs.some(function (x) { return x[0] === sub; })) sub = 'parejas';
   html += '<div class="stabs">' + subs.map(function (s) { return '<button class="' + (sub === s[0] ? 'on' : '') + '" data-a="filt" data-k="t' + t.id + '" data-v="' + s[0] + '">' + s[1] + '</button>'; }).join('') + '</div>';
   if (sub !== 'ranking' && cats.length > 1) html += '<div class="chips">' + cats.map(function (c) { return '<button class="chip ' + (c === cat ? 'on' : '') + '" data-a="tCat" data-t="' + t.id + '" data-v="' + h(c) + '">' + h(c) + ' <span class="xs" style="opacity:.7">' + pairsOf(t.id, c).length + '</span></button>'; }).join('') + '</div>';
-  if (!cats.length && sub !== 'ranking') return html + empty('trophy', 'Agrega categorías al torneo.', can ? '<br><button class="btn pri" data-a="go" data-v="torneoForm" data-id="' + t.id + '">Editar torneo</button>' : '');
+  if (!cats.length && sub !== 'ranking') return html + empty('trophy', 'Agrega categorías.', can ? '<br><button class="btn pri" data-a="go" data-v="torneoForm" data-id="' + t.id + '">Editar torneo</button>' : '');
   html += TSUB[sub](t, cat, can);
   return html;
 };
@@ -1353,7 +1412,7 @@ TSUB.parejas = function (t, cat, can) {
   var q = (S.filt['tq' + t.id] || '').toLowerCase();
   var html = '';
   if (can) html += '<div class="row" style="gap:8px"><button class="btn pri grow" data-a="pairAdd" data-t="' + t.id + '" data-c="' + h(cat) + '">' + ICON.plus + 'Agregar pareja</button><button class="btn" data-a="pairBulk" data-t="' + t.id + '" data-c="' + h(cat) + '">Carga masiva</button></div>';
-  html += '<div class="row" style="margin:12px 0 4px"><div class="grow sm mut"><b style="color:#fff">' + ps.length + '</b> parejas en ' + h(cat) + ' · <b style="color:#fff">' + pairsOf(t.id).length + '</b> en total</div></div>';
+  html += '<div class="row" style="margin:12px 0 4px"><div class="grow sm mut"><b style="color:#fff">' + ps.length + (t.cupo > 0 ? ' / ' + t.cupo : '') + '</b> parejas en ' + h(cat) + ' · <b style="color:#fff">' + pairsOf(t.id).length + '</b> en total</div></div>';
   if (ps.length > 12) html += '<input class="inp" placeholder="Buscar pareja…" data-filt="tq' + t.id + '" value="' + h(S.filt['tq' + t.id] || '') + '" style="height:42px;margin-bottom:8px">';
   if (!ps.length) return html + empty('users', 'Sin parejas registradas en esta categoría.');
   html += '<div class="card" style="padding:4px 12px">' + ps.filter(function (p) { return !q || (pName(p.j1, true) + ' ' + pName(p.j2, true)).toLowerCase().indexOf(q) >= 0; }).map(function (p, i) {
@@ -1372,7 +1431,7 @@ TSUB.grupos = function (t, cat, can) {
 };
 function groupCard(t, cat, g, cs) {
   var tb = cs.tabs[g];
-  return '<div class="gcard" style="margin-bottom:12px"><div class="gh"><b>GRUPO ' + h(g) + '</b>' + (tb.complete ? '<span class="bdg g">Completo</span>' : '<span class="xs mut">' + tb.ms.filter(function (m) { return m.estado === 'fin'; }).length + '/' + tb.ms.length + '</span>') + '</div><table class="st"><tr><th>#</th><th>Pareja</th><th>PJ</th><th>PG</th><th>+/-</th></tr>' +
+  return '<div class="gcard" style="margin-bottom:12px"><div class="gh"><b>' + (g === 'Liga' ? 'TABLA GENERAL' : 'GRUPO ' + h(g)) + '</b>' + (tb.complete ? '<span class="bdg g">Completo</span>' : '<span class="xs mut">' + tb.ms.filter(function (m) { return m.estado === 'fin'; }).length + '/' + tb.ms.length + '</span>') + '</div><table class="st"><tr><th>#</th><th>Pareja</th><th>PJ</th><th>PG</th><th>+/-</th></tr>' +
     tb.rows.map(function (r, i) { var st = cs.status[r.p.id]; return '<tr class="' + (st === 'q' ? 'q' : st === 'out' ? 'out' : '') + '"><td>' + (i + 1) + '</td><td class="nm"><div>' + pairName(r.p) + '</div></td><td>' + r.pj + '</td><td class="b">' + r.pg + '</td><td>' + (r.gf - r.gc > 0 ? '+' : '') + (r.gf - r.gc) + '</td></tr>'; }).join('') + '</table></div>';
 }
 TSUB.partidos = function (t, cat, can) {
@@ -1390,13 +1449,39 @@ TSUB.partidos = function (t, cat, can) {
   if (ms.length > max) html += '<div class="xs mut" style="margin-top:8px">Mostrando ' + max + ' de ' + ms.length + '. Filtra por "Por jugar" para ver los siguientes.</div>';
   return html;
 };
+TSUB.tabla = function (t, cat, can) {
+  var cs = catStatus(t, cat), cfg = cs.cfg, html = '', np = pairsOf(t.id, cat).length;
+  if (can) html += '<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn pri grow" data-a="genLiga" data-t="' + t.id + '" data-c="' + h(cat) + '">' + ICON.dice + (cs.gs.length ? 'Regenerar calendario' : 'Generar calendario') + '</button>' + (cs.gs.length ? '<button class="btn" data-a="reschedL" data-t="' + t.id + '">Reasignar canchas</button>' : '') + '</div>';
+  html += '<div class="xs mut" style="margin:6px 0 10px">' + np + ' parejas · ' + (t.jornadas || 0) + ' jornadas cada ' + (t.cada || 7) + ' días · ' + (cfg.pasan ? 'pasan ' + cfg.pasan + ' a liguilla' : 'sin liguilla') + '</div>';
+  if (!cs.gs.length) return html + empty('dice', 'Registra las parejas de ' + h(cat) + ' y genera el calendario.');
+  return html + groupCard(t, cat, 'Liga', cs) + '<div class="xs dim">Orden: partidos ganados, resultado entre ellos, diferencia de juegos y juegos a favor.' + (cfg.pasan ? ' Al terminar la liga, quedan tachadas las parejas que no entran a liguilla.' : '') + '</div>';
+};
+TSUB.jornadas = function (t, cat, can) {
+  var ms = matchesOf(t.id, cat, 'liga'), html = '';
+  if (!ms.length) return empty('court', 'Aún no hay calendario. Genéralo en la pestaña Tabla.');
+  var J = 0, pend = {};
+  ms.forEach(function (m) { if (m.jornada > J) J = m.jornada; if (m.estado !== 'fin') pend[m.jornada] = 1; });
+  var def = null; for (var i = 1; i <= J; i++) if (pend[i]) { def = i; break; }
+  var sel = +S.filt['tj' + t.id + cat] || def || J;
+  html += '<div class="chips">' + Array.from({ length: J }, function (_, i) { var n = i + 1; return '<button class="chip ' + (n === sel ? 'on' : '') + '" data-a="filt" data-k="tj' + t.id + h(cat) + '" data-v="' + n + '">J' + n + (pend[n] ? '' : ' ✓') + '</button>'; }).join('') + '</div>';
+  var jm = ms.filter(function (m) { return m.jornada === sel; }).sort(function (a, b) { return (a.turno || 0) - (b.turno || 0) || (a.cancha || 0) - (b.cancha || 0); });
+  var f = jm[0] && jm[0].fecha;
+  html += '<div class="tl"><b>Jornada ' + sel + '</b>' + (f ? '<span>' + fdate(f) + '</span>' : '') + '<span>' + jm.filter(function (m) { return m.estado === 'fin'; }).length + '/' + jm.length + ' jugados</span></div>';
+  var lastT = null;
+  jm.forEach(function (m) { if (m.turno !== lastT) { lastT = m.turno; html += '<div class="xs mut" style="margin:10px 2px 6px">Turno ' + (m.turno || '–') + (m.hora ? ' · ' + h(m.hora) : '') + '</div>'; } html += matchCard(m); });
+  var on = {}; jm.forEach(function (m) { on[m.pa] = 1; on[m.pb] = 1; });
+  var rest = pairsOf(t.id, cat).filter(function (p) { return !on[p.id]; });
+  if (rest.length) html += '<div class="xs mut" style="margin:10px 2px">Descansa: ' + rest.map(function (p) { return pairName(p); }).join(', ') + '</div>';
+  return html;
+};
 TSUB.cuadro = function (t, cat, can) {
   var em = matchesOf(t.id, cat, 'elim'), cs = catStatus(t, cat), html = '';
   if (can) {
     html += '<div class="row" style="gap:8px"><button class="btn ' + (cs.allDone ? 'pri' : '') + ' grow" data-a="bracket" data-t="' + t.id + '" data-c="' + h(cat) + '"' + (cs.gs.length ? '' : ' disabled') + '>' + ICON.trophy + (em.length ? 'Regenerar cuadro' : 'Generar cuadro de eliminatorias') + '</button></div>';
-    if (!cs.allDone && cs.gs.length) html += '<div class="xs mut" style="margin-top:6px">Faltan resultados de fase de grupos. Puedes generarlo al terminar.</div>';
+    if (!cs.allDone && cs.gs.length) html += '<div class="xs mut" style="margin-top:6px">Faltan resultados de ' + (isLiga(t) ? 'la liga' : 'fase de grupos') + '. Puedes generarlo al terminar.</div>';
+    if (isLiga(t) && !cs.cfg.pasan) return html + empty('trophy', 'Esta categoría no tiene liguilla. Actívala en Editar.');
   }
-  if (!em.length) return html + empty('trophy', 'El cuadro se arma con las parejas que pasan de grupos.');
+  if (!em.length) return html + empty('trophy', isLiga(t) ? 'La liguilla se arma con las mejores parejas de la tabla.' : 'El cuadro se arma con las parejas que pasan de grupos.');
   var R = {}; em.forEach(function (m) { (R[m.ronda] = R[m.ronda] || []).push(m); });
   html += bracketHTML(R);
   return html;
@@ -1610,7 +1695,7 @@ function scoreModal(id) {
   var A = m.torneoId ? pairName(X.P[m.pa], true) : teamName(m.a), B = m.torneoId ? pairName(X.P[m.pb], true) : teamName(m.b);
   var C = t ? +t.canchas || 1 : 0;
   var rule = r ? (r.regla === 'fijo' ? 'Se juegan ' + r.juegos + ' juegos' : 'Gana quien llegue a ' + r.juegos) : (t ? t.formato || '' : '');
-  modal('<h3>Marcador</h3><div class="xs mut" style="margin:-6px 0 14px">' + (t ? h(m.cat) + ' · ' + (m.fase === 'grupo' ? 'Grupo ' + h(m.grupo) : h(m.label)) + ' · ' : 'Ronda ' + m.ronda + ' · ') + h(rule) + '</div>' +
+  modal('<h3>Marcador</h3><div class="xs mut" style="margin:-6px 0 14px">' + (t ? h(m.cat) + ' · ' + (m.fase === 'grupo' ? 'Grupo ' + h(m.grupo) : m.fase === 'liga' ? 'Jornada ' + m.jornada : h(m.label)) + ' · ' : 'Ronda ' + m.ronda + ' · ') + h(rule) + '</div>' +
     scRow('a', A) + '<div class="xs dim" style="text-align:center;margin:6px 0">VS</div>' + scRow('b', B) +
     (t ? '<div class="fld" style="margin-top:14px"><label>Cancha</label><select class="inp" id="scC">' + Array.from({ length: C }, function (_, i) { return '<option value="' + (i + 1) + '"' + (+SC.cancha === i + 1 ? ' selected' : '') + '>Cancha ' + (i + 1) + '</option>'; }).join('') + '</select></div>' : '') +
     '<div class="acts">' + (m.estado === 'fin' ? '<button class="btn bad" data-a="scClear">Borrar</button>' : '<button class="btn ghost" data-a="close">Cancelar</button>') + '<button class="btn pri" data-a="scSave">Guardar</button></div>');
@@ -1634,7 +1719,8 @@ function tvSlides(t) {
   var sl = [];
   if (!t) { for (var p = 0; p < Math.max(1, Math.ceil(Math.min(X.rank.length, 40) / 8)); p++) sl.push({ k: 'rank', p: p }); return sl; }
   var cats = t.cats || [];
-  var live = (X.MT[t.id] || []).filter(function (m) { return m.estado === 'pend' && m.pa && m.pb; });
+  var cj = isLiga(t) ? curJornada(t) : null;
+  var live = (X.MT[t.id] || []).filter(function (m) { return m.estado === 'pend' && m.pa && m.pb && (!cj || m.fase !== 'liga' || m.jornada === cj); });
   if (live.length) sl.push({ k: 'courts' });
   cats.forEach(function (c) {
     var em = matchesOf(t.id, c, 'elim');
@@ -1673,28 +1759,29 @@ function tvSlide(t, s) {
   }
   if (s.k === 'courts') {
     var C = Math.max(1, +t.canchas || 1), byC = {};
-    (X.MT[t.id] || []).filter(function (m) { return m.estado === 'pend' && m.pa && m.pb; }).sort(function (a, b) { return (a.turno || 0) - (b.turno || 0); }).forEach(function (m) { (byC[m.cancha || 0] = byC[m.cancha || 0] || []).push(m); });
+    var cj2 = isLiga(t) ? curJornada(t) : null;
+    (X.MT[t.id] || []).filter(function (m) { return m.estado === 'pend' && m.pa && m.pb && (!cj2 || m.fase !== 'liga' || m.jornada === cj2); }).sort(function (a, b) { return (a.turno || 0) - (b.turno || 0); }).forEach(function (m) { (byC[m.cancha || 0] = byC[m.cancha || 0] || []).push(m); });
     var cards = [];
     for (var c = 1; c <= C; c++) {
       var l = byC[c] || [], now = l[0], nx = l[1];
-      cards.push('<div class="tvc"><div class="row"><div class="cn grow">CANCHA ' + c + '</div>' + (now ? '<span class="bdg y" style="font-size:.85vw;height:1.6vw">' + h(now.cat) + ' · ' + (now.fase === 'grupo' ? 'G' + h(now.grupo) : h(now.label)) + '</span>' : '') + '</div>' + (now ? '<div class="pr"><span>' + pairName(X.P[now.pa]) + '</span></div><div style="color:var(--neon);font-size:.9vw;letter-spacing:.3em">VS</div><div class="pr"><span>' + pairName(X.P[now.pb]) + '</span></div>' + (nx ? '<div style="margin-top:.6vw;padding-top:.5vw;border-top:1px solid var(--line);font-size:.95vw;color:var(--muted)">Sigue: ' + pairName(X.P[nx.pa]) + ' vs ' + pairName(X.P[nx.pb]) + '</div>' : '') : '<div class="pr" style="color:var(--dim)">Libre</div>') + '</div>');
+      cards.push('<div class="tvc"><div class="row"><div class="cn grow">CANCHA ' + c + '</div>' + (now ? '<span class="bdg y" style="font-size:.85vw;height:1.6vw">' + h(now.cat) + ' · ' + (now.fase === 'grupo' ? 'G' + h(now.grupo) : now.fase === 'liga' ? 'J' + now.jornada : h(now.label)) + '</span>' : '') + '</div>' + (now ? '<div class="pr"><span>' + pairName(X.P[now.pa]) + '</span></div><div style="color:var(--neon);font-size:.9vw;letter-spacing:.3em">VS</div><div class="pr"><span>' + pairName(X.P[now.pb]) + '</span></div>' + (nx ? '<div style="margin-top:.6vw;padding-top:.5vw;border-top:1px solid var(--line);font-size:.95vw;color:var(--muted)">Sigue: ' + pairName(X.P[nx.pa]) + ' vs ' + pairName(X.P[nx.pb]) + '</div>' : '') : '<div class="pr" style="color:var(--dim)">Libre</div>') + '</div>');
     }
     var colsN = C <= 4 ? 2 : C <= 9 ? 3 : 4;
     return '<div class="tvt">En cancha ahora</div><div class="tvgrid" style="grid-template-columns:repeat(' + colsN + ',1fr)">' + cards.slice(0, colsN * 3).join('') + '</div>';
   }
   if (s.k === 'groups') {
     var cs = catStatus(t, s.c), gs = cs.gs.slice(s.from, s.from + 6);
-    return '<div class="tvt">Fase de grupos · ' + h(s.c) + '</div><div class="tvgrid" style="grid-template-columns:repeat(3,1fr)">' + gs.map(function (g) { return groupCard(t, s.c, g, cs); }).join('') + '</div>';
+    return '<div class="tvt">' + (isLiga(t) ? 'Tabla general' + (curJornada(t) ? ' · Jornada ' + curJornada(t) : '') : 'Fase de grupos') + ' · ' + h(s.c) + '</div><div class="tvgrid" style="grid-template-columns:repeat(' + (isLiga(t) ? 1 : 3) + ',1fr)">' + gs.map(function (g) { return groupCard(t, s.c, g, cs); }).join('') + '</div>';
   }
   if (s.k === 'bracket') {
     var R = {}; matchesOf(t.id, s.c, 'elim').forEach(function (m) { (R[m.ronda] = R[m.ronda] || []).push(m); });
     var ks = Object.keys(R).map(Number).sort(function (a, b) { return a - b; });
     if (ks.length > 4) { var keep = ks.slice(-4); var R2 = {}; keep.forEach(function (k) { R2[k] = R[k]; }); R = R2; }
-    return '<div class="tvt">Eliminatoria · ' + h(s.c) + '</div>' + bracketHTML(R);
+    return '<div class="tvt">' + (isLiga(t) ? 'Liguilla' : 'Eliminatoria') + ' · ' + h(s.c) + '</div>' + bracketHTML(R);
   }
   if (s.k === 'results') {
     var fin = (X.MT[t.id] || []).filter(function (m) { return m.estado === 'fin'; }).sort(function (a, b) { return (b.fin || 0) - (a.fin || 0); }).slice(0, 12);
-    return '<div class="tvt">Últimos resultados</div><div class="tvgrid" style="grid-template-columns:repeat(3,1fr)">' + fin.map(function (m) { var aw = +m.ga > +m.gb; return '<div class="tvc"><div class="cn">' + h(m.cat) + ' · ' + (m.fase === 'grupo' ? 'GRUPO ' + h(m.grupo) : h(m.label).toUpperCase()) + '</div><div class="pr" style="' + (aw ? '' : 'opacity:.55') + '"><span>' + pairName(X.P[m.pa]) + '</span><b>' + m.ga + '</b></div><div class="pr" style="' + (!aw ? '' : 'opacity:.55') + '"><span>' + pairName(X.P[m.pb]) + '</span><b>' + m.gb + '</b></div></div>'; }).join('') + '</div>';
+    return '<div class="tvt">Últimos resultados</div><div class="tvgrid" style="grid-template-columns:repeat(3,1fr)">' + fin.map(function (m) { var aw = +m.ga > +m.gb; return '<div class="tvc"><div class="cn">' + h(m.cat) + ' · ' + (m.fase === 'grupo' ? 'GRUPO ' + h(m.grupo) : m.fase === 'liga' ? 'JORNADA ' + m.jornada : h(m.label).toUpperCase()) + '</div><div class="pr" style="' + (aw ? '' : 'opacity:.55') + '"><span>' + pairName(X.P[m.pa]) + '</span><b>' + m.ga + '</b></div><div class="pr" style="' + (!aw ? '' : 'opacity:.55') + '"><span>' + pairName(X.P[m.pb]) + '</span><b>' + m.gb + '</b></div></div>'; }).join('') + '</div>';
   }
   return '';
 }
@@ -1775,8 +1862,9 @@ A.tfElite = function (el) { var v = el.dataset.v; TF.elite = TF.elite || []; var
 A.tfSave = function () {
   if (!TF.nombre.trim()) return toast('Ponle nombre al torneo', true);
   if (!TF.cats.length) return toast('Elige al menos una categoría', true);
-  var o = JSON.parse(JSON.stringify(TF)); delete o._for; o.canchas = Math.max(1, +o.canchas || 1); o.dur = +o.dur || 40;
-  save('torneos', [o], 'Torneo guardado').then(function (it) { TF = null; go('torneo', { id: it[0].id }, true); }).catch(function () {});
+  var o = JSON.parse(JSON.stringify(TF)); delete o._for; o.canchas = Math.max(1, +o.canchas || 1); o.dur = +o.dur || 40; o.tipo = o.tipo || 'torneo';
+  if (o.tipo === 'liga') { o.jornadas = Math.max(1, +o.jornadas || 1); o.cada = Math.max(1, +o.cada || 7); o.cupo = Math.max(0, +o.cupo || 0); }
+  save('torneos', [o], o.tipo === 'liga' ? 'Liga guardada' : 'Torneo guardado').then(function (it) { TF = null; go('torneo', { id: it[0].id }, true); }).catch(function () {});
 };
 A.tDel = function (el) { ask('¿Borrar el torneo con todas sus parejas y partidos?', 'Borrar', true).then(function (ok) { if (ok) del('torneos', [el.dataset.id], 'Torneo borrado').then(function () { TF = null; tab('torneos'); }); }); };
 A.tCat = function (el) { S.cat[el.dataset.t] = el.dataset.v; render(); };
@@ -1793,7 +1881,7 @@ A.pairAdd = function (el) {
     pick: function (id) { sel.push(id); draw(); }
   };
   A.paRm = function (el) { sel.splice(+el.dataset.i, 1); draw(); };
-  A.paSave = function () { save('parejas', [{ torneoId: tid, cat: cat, j1: sel[0], j2: sel[1] }], 'Pareja registrada').then(function () { sel = []; draw(); S.dirty = true; }).catch(function () {}); };
+  A.paSave = function () { var tt = X.T[tid]; if (tt && tt.cupo > 0 && pairsOf(tid, cat).length >= tt.cupo) return toast('Ya se llenó el cupo de ' + tt.cupo + ' parejas', true); save('parejas', [{ torneoId: tid, cat: cat, j1: sel[0], j2: sel[1] }], 'Pareja registrada').then(function () { sel = []; draw(); S.dirty = true; }).catch(function () {}); };
   draw();
 };
 A.pairDel = function (el) {
@@ -1815,6 +1903,7 @@ A.bulkGo = function (el) {
     pairs.push([people.length, people.length + 1]); people.push(pp[0], pp[1]);
   });
   if (!pairs.length) return toast('No encontré parejas. Revisa el formato.', true);
+  var tt = X.T[tid]; if (tt && tt.cupo > 0 && pairsOf(tid, cat).length + pairs.length > tt.cupo) return toast('Solo caben ' + Math.max(0, tt.cupo - pairsOf(tid, cat).length) + ' parejas más (cupo ' + tt.cupo + ').', true);
   // reutiliza por nombre exacto cuando no hay teléfono
   var byName = {}; S.d.jugadores.forEach(function (j) { byName[j.nombre.toLowerCase()] = j.id; });
   var toCreate = [], map = {};
@@ -1835,6 +1924,15 @@ A.draw = function (el) {
     drawGroups(t, cat).then(function () { toast('Grupos sorteados y canchas asignadas'); S.filt['t' + t.id] = 'grupos'; render(); }).catch(function (e) { toast(e.message, true); });
   });
 };
+A.genLiga = function (el) {
+  var t = X.T[el.dataset.t], cat = el.dataset.c;
+  var has = matchesOf(t.id, cat).some(function (m) { return m.estado === 'fin'; });
+  (has ? ask('Ya hay resultados en ' + cat + '. Si generas de nuevo el calendario se borran. ¿Continuar?', 'Generar', true) : Promise.resolve(true)).then(function (ok) {
+    if (!ok) return;
+    genLeague(t, cat).then(function () { S.filt['t' + t.id] = 'jornadas'; render(); }).catch(function (e) { toast(e.message, true); });
+  });
+};
+A.reschedL = function (el) { reschedLeague(X.T[el.dataset.t]).then(render).catch(function () {}); };
 A.resched = function (el) { reschedule(X.T[el.dataset.t]).then(render).catch(function () {}); };
 A.bracket = function (el) {
   var t = X.T[el.dataset.t], cat = el.dataset.c, cs = catStatus(t, cat), em = matchesOf(t.id, cat, 'elim');
@@ -2023,6 +2121,15 @@ var SEED = {
           });
           return save('partidos', done);
         }).then(function () { return genBracket(X.T[t.id], '4ta'); });
+      })
+      .then(function () { return save('torneos', [{ tipo: 'liga', nombre: 'Liga Diamante Invierno', sedeId: sIds[1], fecha: addDays(today(), -14), hora: '19:30', dur: 45, formato: '1 set a 6 juegos', canchas: 3, cats: ['5ta'], catCfg: { '5ta': { pasan: 4 } }, elite: [spIds[3]], estado: 'juego', jornadas: 7, cada: 7, cupo: 8 }]); })
+      .then(function (it) {
+        var t = it[0], pr = [];
+        for (var i = 0; i < 8; i++) pr.push({ torneoId: t.id, cat: '5ta', j1: jIds[40 + i * 2], j2: jIds[41 + i * 2] });
+        return save('parejas', pr).then(function () { return genLeague(X.T[t.id], '5ta'); }).then(function () {
+          var ms = (X.MT[t.id] || []).filter(function (m) { return m.jornada <= 3; });
+          return save('partidos', ms.map(function (m, k) { var aw = Math.random() < .5, lo = Math.floor(Math.random() * 5); return Object.assign({}, m, { ga: aw ? 6 : lo, gb: aw ? lo : 6, estado: 'fin', fin: Date.now() - 50000 + k }); }));
+        });
       })
       .then(function () { var rj = jIds.slice(0, 12); rj[0] = myId(); return save('retas', [{ sedeId: sIds[1], fecha: today(), hora: '19:30', tipo: 'royal', modo: 'ind', juegos: 5, regla: 'primero', canchas: 3, jugadores: rj, parejas: [], estado: 'abierta', ronda: 0 }]); })
       .then(function (it) {
