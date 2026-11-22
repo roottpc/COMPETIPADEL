@@ -816,6 +816,17 @@ function renderTicker() {
   t.classList.toggle('hide', !html); t.innerHTML = FS(html);
 }
 
+// =================== INSTALAR COMO APP ===================
+var INSTALL = { ev: null };
+window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); INSTALL.ev = e; if (S.me && $('#modal') && $('#modal').classList.contains('hide')) render(); else if (!S.me && $('#login') && !$('#login').classList.contains('hide')) renderLogin(); });
+window.addEventListener('appinstalled', function () { INSTALL.ev = null; lsSet('cp_inst', '1'); toast('¡CompetiPadel quedó instalada!'); if (S.me) render(); });
+function isStandalone() { try { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch (e) { return false; } }
+function isIOS() { return /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+function canInstall() { return (BACKEND.mode === 'firebase' || BACKEND.mode === 'web') && !isStandalone(); }
+function installBanner() {
+  if (!canInstall() || lsGet('cp_inst_x')) return '';
+  return '<div class="card glow" style="display:flex;align-items:center;gap:12px;margin-bottom:12px"><div style="width:44px;height:44px;flex:none">' + logo().replace('<svg', '<svg width="44" height="44"') + '</div><div class="grow"><div class="b">Instala CompetiPadel</div><div class="xs mut">Ábrela como app desde tu pantalla de inicio, sin buscar el link.</div></div><button class="btn sm pri" data-a="install">Instalar</button><b data-a="installX" style="cursor:pointer;color:var(--muted);padding:4px 6px">✕</b></div>';
+}
 // =================== LOGIN ===================
 var LG = { step: 'tel', tel: '', info: null, kind: 'j' };
 function renderLogin() {
@@ -845,6 +856,7 @@ function renderLogin() {
       '<button class="btn pri blk" data-a="lgReg">Crear cuenta</button><button class="btn ghost blk" style="margin-top:10px" data-a="lgBack">Cambiar número</button>';
   }
   var demo = BACKEND.mode === 'demo' ? '<div class="demo"><b style="color:var(--neon)">MODO DEMO</b> · Los datos se guardan solo en este navegador.<br>Admin de prueba: <b>311 000 0001</b> · PIN <b>123456</b><br><button class="btn sm" style="margin-top:8px" data-a="lgDemo">Entrar como admin demo</button> <button class="btn sm ghost" style="margin-top:8px" data-a="lgReset">Reiniciar demo</button></div>' : '';
+  if (canInstall()) body += '<button class="btn ghost blk" style="margin-top:12px" data-a="install">' + ICON.plus + 'Instalar como app</button>';
   L.innerHTML = '<div class="login">' + logo('bigd') + '<h1>COMPETI<span style="-webkit-text-fill-color:var(--neon)">PADEL</span></h1><div class="tag">TORNEOS · RETAS · RANKING</div><div class="box">' + body + demo + '</div></div>';
   setTimeout(function () { var f = $('#login [autofocus]'); if (f) f.focus(); }, 50);
 }
@@ -1249,6 +1261,7 @@ VIEWS.inicio = function () {
     var st = X.st[me.id] || { pj: 0, pg: 0 };
     html += '<div class="hero"><div class="row"><div class="grow"><div class="sm mut">Hola, ' + h(shortName(me.nombre)) + '</div><div class="row" style="margin-top:6px;gap:14px"><div><div class="big">' + (X.elo[me.id] || '—') + '</div><div class="xs mut" style="letter-spacing:.2em">ELO</div></div><div><div class="big" style="font-size:28px">#' + (X.pos[me.id] || '—') + '</div><div class="xs mut" style="letter-spacing:.2em">RANKING</div></div></div></div><div class="col" style="align-items:flex-end;gap:6px"><span class="bdg">' + h(me.fuerza || '') + '</span><span class="sm mut">' + st.pg + 'G · ' + (st.pj - st.pg) + 'P</span></div></div></div>';
   }
+  html = installBanner() + html;
   html += '<div class="qa"><button data-a="go" data-v="retaForm">' + ICON.bolt + 'Nueva reta</button><button data-a="tab" data-t="torneos">' + ICON.trophy + 'Torneos</button><button data-a="tab" data-t="ranking">' + ICON.rank + 'Ranking</button><button data-a="go" data-v="sedes">' + ICON.court + 'Sedes</button></div>';
   var tAct = S.d.torneos.filter(function (t) { return t.estado !== 'fin'; }).sort(function (a, b) { return String(a.fecha).localeCompare(b.fecha); });
   if (tAct.length) html += sec('Torneos') + '<div class="gridA">' + tAct.slice(0, 4).map(torneoCard).join('') + '</div>';
@@ -1557,6 +1570,7 @@ VIEWS.mas = function () {
   items.push(['sedes', 'court', 'Sedes / Clubes'], ['sponsors', 'star', 'Patrocinadores'], ['tvPick', 'tv', 'Pantalla de visualización (TV)']);
   if (isAdmin()) items.push(['admin', 'shield', 'Administración']);
   html += '<div class="card" style="margin-top:12px;padding:4px 14px">' + items.map(function (it) { return '<div class="li tap" data-a="go" data-v="' + it[0] + '"' + (it[3] ? ' data-id="' + it[3] + '"' : '') + '><span style="width:22px;color:var(--neon)">' + ICON[it[1]] + '</span><span class="grow b">' + it[2] + '</span><span class="dim">›</span></div>'; }).join('') +
+    (canInstall() ? '<div class="li tap" data-a="install"><span style="width:22px;color:var(--neon)">' + ICON.plus + '</span><span class="grow b">Instalar app en mi celular</span><span class="dim">›</span></div>' : '') +
     '<div class="li tap" data-a="pinChange"><span style="width:22px;color:var(--neon)">' + ICON.shield + '</span><span class="grow b">Cambiar PIN</span><span class="dim">›</span></div>' +
     '<div class="li tap" data-a="logout"><span style="width:22px;color:var(--bad)">' + ICON.out + '</span><span class="grow b" style="color:#ff9fb1">Cerrar sesión</span></div></div>';
   html += '<div class="xs dim" style="text-align:center;margin-top:18px">CompetiPadel · Ranking Diamante · ' + (BACKEND.mode === 'demo' ? 'modo demo' : BACKEND.mode === 'firebase' ? 'en tiempo real' : 'en línea') + '</div>';
@@ -1990,6 +2004,20 @@ A.adMore = function (el) {
 };
 A.adReset = function (el) { run(api('resetPin', S.token, 'j', el.dataset.id), 'PIN restablecido. Al entrar creará uno nuevo.').then(function () { closeModal(); return load(true); }).then(render).catch(function () {}); };
 A.adDel = function (el) { ask('¿Borrar jugador? Sus resultados dejarán de contar en el ranking.', 'Borrar', true).then(function (ok) { if (ok) del('jugadores', [el.dataset.id], 'Jugador borrado').then(render); }); };
+// instalar
+A.install = function () {
+  if (INSTALL.ev) {
+    var ev = INSTALL.ev; ev.prompt();
+    ev.userChoice.then(function (c) { if (c && c.outcome === 'accepted') { INSTALL.ev = null; lsSet('cp_inst_x', '1'); } render(); }).catch(function () {});
+    return;
+  }
+  var ios = isIOS();
+  modal('<h3>Instalar CompetiPadel</h3><div class="sm mut" style="margin-bottom:12px">Queda como una app más en tu celular, con su ícono.</div>' +
+    (ios ? '<ol class="sm" style="line-height:1.9;padding-left:20px"><li>Abre este link en <b>Safari</b>.</li><li>Toca el botón <b>Compartir</b> (el cuadrito con flecha hacia arriba).</li><li>Elige <b>Agregar a pantalla de inicio</b>.</li><li>Toca <b>Agregar</b>.</li></ol>'
+      : '<ol class="sm" style="line-height:1.9;padding-left:20px"><li>Abre este link en <b>Chrome</b>.</li><li>Toca el menú <b>⋮</b> (arriba a la derecha).</li><li>Elige <b>Instalar app</b> o <b>Agregar a la pantalla principal</b>.</li><li>Confirma con <b>Instalar</b>.</li></ol>') +
+    '<div class="acts"><button class="btn pri" data-a="close">Entendido</button></div>');
+};
+A.installX = function () { lsSet('cp_inst_x', '1'); render(); };
 // tv
 A.tvOpen = function (el) { tvOpen(el.dataset.id); };
 A.tvClose = function () { tvClose(); };
