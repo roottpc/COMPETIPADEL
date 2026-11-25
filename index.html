@@ -4431,7 +4431,7 @@ function imgTorneoSpecs(t, kind, cat, n) {
   }
   if (kind === 'jornada') {
     var j = n || curJornada(t), ms = matchesOf(t.id, cat, 'liga').filter(function (m) { return m.jornada === j; }).sort(function (a, b) { return String(a.hora || '').localeCompare(String(b.hora || '')) || a.cancha - b.cancha; });
-    return Object.assign(base, { kicker: 'Jornada ' + j + (ms[0] && ms[0].fecha ? ' · ' + fdate(ms[0].fecha) : ''), pages: chunk(ms.map(imgMatch), 12).map(function (l) { return [{ type: 'matches', title: 'Partidos ' + cat, list: l }]; }) });
+    return Object.assign(base, { sub: (sd ? sd.nombre : '') + (cat ? (sd ? ' · ' : '') + cat : ''), kicker: 'Jornada ' + j + (ms[0] && ms[0].fecha ? ' · ' + fdate(ms[0].fecha) : ''), pages: chunk(ms.map(imgMatch), 12).map(function (l) { return [{ type: 'matches', title: 'Partidos ' + cat, list: l }]; }) });
   }
   if (kind === 'turno') {
     var pend = matchesOf(t.id, cat).filter(function (m) { return m.pa && m.pb && m.estado !== 'bye' && (n ? true : m.estado === 'pend'); }), tn = n || Math.min.apply(null, pend.map(function (m) { return m.turno || 999; }));
