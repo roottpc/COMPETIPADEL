@@ -201,7 +201,7 @@ tr.out td.nm div{text-decoration:line-through;text-decoration-color:rgba(255,77,
 .mt .sd.w .n{color:#fff;font-weight:600}.mt .sd.w .s{color:var(--neon)}
 .mt .sd.l{opacity:.55}
 .mt.fin{border-color:rgba(43,245,176,.18)}
-.tl{display:flex;align-items:center;gap:8px;margin:16px 0 8px;font-size:12px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.tl{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:16px 0 8px;font-size:12px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
 .tl b{color:var(--neon2)}
 
 /* bracket */
@@ -285,7 +285,2304 @@ tr.out td.nm div{text-decoration:line-through;text-decoration-color:rgba(255,77,
 #tv:hover .tvx{opacity:1}
 .tvdots{position:absolute;bottom:.6vw;left:50%;transform:translateX(-50%);display:flex;gap:.5vw}
 .tvdots i{width:.6vw;height:.6vw;border-radius:50%;background:var(--line2)}.tvdots i.on{background:var(--neon);box-shadow:0 0 .6vw var(--neon)}
-</style></head><body><script>var BACKEND={mode:'firebase'};BACKEND.ready=new Promise(function(a,b){BACKEND._res=a;BACKEND._rej=b;});// ================== COMPETIPADEL · BACKEND FIREBASE (lógica) ==================
+</style></head><body><script>//---------------------------------------------------------------------
+//
+// QR Code Generator for JavaScript
+//
+// Copyright (c) 2009 Kazuhiko Arase
+//
+// URL: http://www.d-project.com/
+//
+// Licensed under the MIT license:
+//  http://www.opensource.org/licenses/mit-license.php
+//
+// The word 'QR Code' is registered trademark of
+// DENSO WAVE INCORPORATED
+//  http://www.denso-wave.com/qrcode/faqpatent-e.html
+//
+//---------------------------------------------------------------------
+
+var qrcode = function() {
+
+  //---------------------------------------------------------------------
+  // qrcode
+  //---------------------------------------------------------------------
+
+  /**
+   * qrcode
+   * @param typeNumber 1 to 40
+   * @param errorCorrectionLevel 'L','M','Q','H'
+   */
+  var qrcode = function(typeNumber, errorCorrectionLevel) {
+
+    var PAD0 = 0xEC;
+    var PAD1 = 0x11;
+
+    var _typeNumber = typeNumber;
+    var _errorCorrectionLevel = QRErrorCorrectionLevel[errorCorrectionLevel];
+    var _modules = null;
+    var _moduleCount = 0;
+    var _dataCache = null;
+    var _dataList = [];
+
+    var _this = {};
+
+    var makeImpl = function(test, maskPattern) {
+
+      _moduleCount = _typeNumber * 4 + 17;
+      _modules = function(moduleCount) {
+        var modules = new Array(moduleCount);
+        for (var row = 0; row < moduleCount; row += 1) {
+          modules[row] = new Array(moduleCount);
+          for (var col = 0; col < moduleCount; col += 1) {
+            modules[row][col] = null;
+          }
+        }
+        return modules;
+      }(_moduleCount);
+
+      setupPositionProbePattern(0, 0);
+      setupPositionProbePattern(_moduleCount - 7, 0);
+      setupPositionProbePattern(0, _moduleCount - 7);
+      setupPositionAdjustPattern();
+      setupTimingPattern();
+      setupTypeInfo(test, maskPattern);
+
+      if (_typeNumber >= 7) {
+        setupTypeNumber(test);
+      }
+
+      if (_dataCache == null) {
+        _dataCache = createData(_typeNumber, _errorCorrectionLevel, _dataList);
+      }
+
+      mapData(_dataCache, maskPattern);
+    };
+
+    var setupPositionProbePattern = function(row, col) {
+
+      for (var r = -1; r <= 7; r += 1) {
+
+        if (row + r <= -1 || _moduleCount <= row + r) continue;
+
+        for (var c = -1; c <= 7; c += 1) {
+
+          if (col + c <= -1 || _moduleCount <= col + c) continue;
+
+          if ( (0 <= r && r <= 6 && (c == 0 || c == 6) )
+              || (0 <= c && c <= 6 && (r == 0 || r == 6) )
+              || (2 <= r && r <= 4 && 2 <= c && c <= 4) ) {
+            _modules[row + r][col + c] = true;
+          } else {
+            _modules[row + r][col + c] = false;
+          }
+        }
+      }
+    };
+
+    var getBestMaskPattern = function() {
+
+      var minLostPoint = 0;
+      var pattern = 0;
+
+      for (var i = 0; i < 8; i += 1) {
+
+        makeImpl(true, i);
+
+        var lostPoint = QRUtil.getLostPoint(_this);
+
+        if (i == 0 || minLostPoint > lostPoint) {
+          minLostPoint = lostPoint;
+          pattern = i;
+        }
+      }
+
+      return pattern;
+    };
+
+    var setupTimingPattern = function() {
+
+      for (var r = 8; r < _moduleCount - 8; r += 1) {
+        if (_modules[r][6] != null) {
+          continue;
+        }
+        _modules[r][6] = (r % 2 == 0);
+      }
+
+      for (var c = 8; c < _moduleCount - 8; c += 1) {
+        if (_modules[6][c] != null) {
+          continue;
+        }
+        _modules[6][c] = (c % 2 == 0);
+      }
+    };
+
+    var setupPositionAdjustPattern = function() {
+
+      var pos = QRUtil.getPatternPosition(_typeNumber);
+
+      for (var i = 0; i < pos.length; i += 1) {
+
+        for (var j = 0; j < pos.length; j += 1) {
+
+          var row = pos[i];
+          var col = pos[j];
+
+          if (_modules[row][col] != null) {
+            continue;
+          }
+
+          for (var r = -2; r <= 2; r += 1) {
+
+            for (var c = -2; c <= 2; c += 1) {
+
+              if (r == -2 || r == 2 || c == -2 || c == 2
+                  || (r == 0 && c == 0) ) {
+                _modules[row + r][col + c] = true;
+              } else {
+                _modules[row + r][col + c] = false;
+              }
+            }
+          }
+        }
+      }
+    };
+
+    var setupTypeNumber = function(test) {
+
+      var bits = QRUtil.getBCHTypeNumber(_typeNumber);
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[Math.floor(i / 3)][i % 3 + _moduleCount - 8 - 3] = mod;
+      }
+
+      for (var i = 0; i < 18; i += 1) {
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+        _modules[i % 3 + _moduleCount - 8 - 3][Math.floor(i / 3)] = mod;
+      }
+    };
+
+    var setupTypeInfo = function(test, maskPattern) {
+
+      var data = (_errorCorrectionLevel << 3) | maskPattern;
+      var bits = QRUtil.getBCHTypeInfo(data);
+
+      // vertical
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 6) {
+          _modules[i][8] = mod;
+        } else if (i < 8) {
+          _modules[i + 1][8] = mod;
+        } else {
+          _modules[_moduleCount - 15 + i][8] = mod;
+        }
+      }
+
+      // horizontal
+      for (var i = 0; i < 15; i += 1) {
+
+        var mod = (!test && ( (bits >> i) & 1) == 1);
+
+        if (i < 8) {
+          _modules[8][_moduleCount - i - 1] = mod;
+        } else if (i < 9) {
+          _modules[8][15 - i - 1 + 1] = mod;
+        } else {
+          _modules[8][15 - i - 1] = mod;
+        }
+      }
+
+      // fixed module
+      _modules[_moduleCount - 8][8] = (!test);
+    };
+
+    var mapData = function(data, maskPattern) {
+
+      var inc = -1;
+      var row = _moduleCount - 1;
+      var bitIndex = 7;
+      var byteIndex = 0;
+      var maskFunc = QRUtil.getMaskFunction(maskPattern);
+
+      for (var col = _moduleCount - 1; col > 0; col -= 2) {
+
+        if (col == 6) col -= 1;
+
+        while (true) {
+
+          for (var c = 0; c < 2; c += 1) {
+
+            if (_modules[row][col - c] == null) {
+
+              var dark = false;
+
+              if (byteIndex < data.length) {
+                dark = ( ( (data[byteIndex] >>> bitIndex) & 1) == 1);
+              }
+
+              var mask = maskFunc(row, col - c);
+
+              if (mask) {
+                dark = !dark;
+              }
+
+              _modules[row][col - c] = dark;
+              bitIndex -= 1;
+
+              if (bitIndex == -1) {
+                byteIndex += 1;
+                bitIndex = 7;
+              }
+            }
+          }
+
+          row += inc;
+
+          if (row < 0 || _moduleCount <= row) {
+            row -= inc;
+            inc = -inc;
+            break;
+          }
+        }
+      }
+    };
+
+    var createBytes = function(buffer, rsBlocks) {
+
+      var offset = 0;
+
+      var maxDcCount = 0;
+      var maxEcCount = 0;
+
+      var dcdata = new Array(rsBlocks.length);
+      var ecdata = new Array(rsBlocks.length);
+
+      for (var r = 0; r < rsBlocks.length; r += 1) {
+
+        var dcCount = rsBlocks[r].dataCount;
+        var ecCount = rsBlocks[r].totalCount - dcCount;
+
+        maxDcCount = Math.max(maxDcCount, dcCount);
+        maxEcCount = Math.max(maxEcCount, ecCount);
+
+        dcdata[r] = new Array(dcCount);
+
+        for (var i = 0; i < dcdata[r].length; i += 1) {
+          dcdata[r][i] = 0xff & buffer.getBuffer()[i + offset];
+        }
+        offset += dcCount;
+
+        var rsPoly = QRUtil.getErrorCorrectPolynomial(ecCount);
+        var rawPoly = qrPolynomial(dcdata[r], rsPoly.getLength() - 1);
+
+        var modPoly = rawPoly.mod(rsPoly);
+        ecdata[r] = new Array(rsPoly.getLength() - 1);
+        for (var i = 0; i < ecdata[r].length; i += 1) {
+          var modIndex = i + modPoly.getLength() - ecdata[r].length;
+          ecdata[r][i] = (modIndex >= 0)? modPoly.getAt(modIndex) : 0;
+        }
+      }
+
+      var totalCodeCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalCodeCount += rsBlocks[i].totalCount;
+      }
+
+      var data = new Array(totalCodeCount);
+      var index = 0;
+
+      for (var i = 0; i < maxDcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < dcdata[r].length) {
+            data[index] = dcdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      for (var i = 0; i < maxEcCount; i += 1) {
+        for (var r = 0; r < rsBlocks.length; r += 1) {
+          if (i < ecdata[r].length) {
+            data[index] = ecdata[r][i];
+            index += 1;
+          }
+        }
+      }
+
+      return data;
+    };
+
+    var createData = function(typeNumber, errorCorrectionLevel, dataList) {
+
+      var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, errorCorrectionLevel);
+
+      var buffer = qrBitBuffer();
+
+      for (var i = 0; i < dataList.length; i += 1) {
+        var data = dataList[i];
+        buffer.put(data.getMode(), 4);
+        buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber) );
+        data.write(buffer);
+      }
+
+      // calc num max data.
+      var totalDataCount = 0;
+      for (var i = 0; i < rsBlocks.length; i += 1) {
+        totalDataCount += rsBlocks[i].dataCount;
+      }
+
+      if (buffer.getLengthInBits() > totalDataCount * 8) {
+        throw 'code length overflow. ('
+          + buffer.getLengthInBits()
+          + '>'
+          + totalDataCount * 8
+          + ')';
+      }
+
+      // end code
+      if (buffer.getLengthInBits() + 4 <= totalDataCount * 8) {
+        buffer.put(0, 4);
+      }
+
+      // padding
+      while (buffer.getLengthInBits() % 8 != 0) {
+        buffer.putBit(false);
+      }
+
+      // padding
+      while (true) {
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD0, 8);
+
+        if (buffer.getLengthInBits() >= totalDataCount * 8) {
+          break;
+        }
+        buffer.put(PAD1, 8);
+      }
+
+      return createBytes(buffer, rsBlocks);
+    };
+
+    _this.addData = function(data, mode) {
+
+      mode = mode || 'Byte';
+
+      var newData = null;
+
+      switch(mode) {
+      case 'Numeric' :
+        newData = qrNumber(data);
+        break;
+      case 'Alphanumeric' :
+        newData = qrAlphaNum(data);
+        break;
+      case 'Byte' :
+        newData = qr8BitByte(data);
+        break;
+      case 'Kanji' :
+        newData = qrKanji(data);
+        break;
+      default :
+        throw 'mode:' + mode;
+      }
+
+      _dataList.push(newData);
+      _dataCache = null;
+    };
+
+    _this.isDark = function(row, col) {
+      if (row < 0 || _moduleCount <= row || col < 0 || _moduleCount <= col) {
+        throw row + ',' + col;
+      }
+      return _modules[row][col];
+    };
+
+    _this.getModuleCount = function() {
+      return _moduleCount;
+    };
+
+    _this.make = function() {
+      if (_typeNumber < 1) {
+        var typeNumber = 1;
+
+        for (; typeNumber < 40; typeNumber++) {
+          var rsBlocks = QRRSBlock.getRSBlocks(typeNumber, _errorCorrectionLevel);
+          var buffer = qrBitBuffer();
+
+          for (var i = 0; i < _dataList.length; i++) {
+            var data = _dataList[i];
+            buffer.put(data.getMode(), 4);
+            buffer.put(data.getLength(), QRUtil.getLengthInBits(data.getMode(), typeNumber) );
+            data.write(buffer);
+          }
+
+          var totalDataCount = 0;
+          for (var i = 0; i < rsBlocks.length; i++) {
+            totalDataCount += rsBlocks[i].dataCount;
+          }
+
+          if (buffer.getLengthInBits() <= totalDataCount * 8) {
+            break;
+          }
+        }
+
+        _typeNumber = typeNumber;
+      }
+
+      makeImpl(false, getBestMaskPattern() );
+    };
+
+    _this.createTableTag = function(cellSize, margin) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var qrHtml = '';
+
+      qrHtml += '<table style="';
+      qrHtml += ' border-width: 0px; border-style: none;';
+      qrHtml += ' border-collapse: collapse;';
+      qrHtml += ' padding: 0px; margin: ' + margin + 'px;';
+      qrHtml += '">';
+      qrHtml += '<tbody>';
+
+      for (var r = 0; r < _this.getModuleCount(); r += 1) {
+
+        qrHtml += '<tr>';
+
+        for (var c = 0; c < _this.getModuleCount(); c += 1) {
+          qrHtml += '<td style="';
+          qrHtml += ' border-width: 0px; border-style: none;';
+          qrHtml += ' border-collapse: collapse;';
+          qrHtml += ' padding: 0px; margin: 0px;';
+          qrHtml += ' width: ' + cellSize + 'px;';
+          qrHtml += ' height: ' + cellSize + 'px;';
+          qrHtml += ' background-color: ';
+          qrHtml += _this.isDark(r, c)? '#000000' : '#ffffff';
+          qrHtml += ';';
+          qrHtml += '"/>';
+        }
+
+        qrHtml += '</tr>';
+      }
+
+      qrHtml += '</tbody>';
+      qrHtml += '</table>';
+
+      return qrHtml;
+    };
+
+    _this.createSvgTag = function(cellSize, margin, alt, title) {
+
+      var opts = {};
+      if (typeof arguments[0] == 'object') {
+        // Called by options.
+        opts = arguments[0];
+        // overwrite cellSize and margin.
+        cellSize = opts.cellSize;
+        margin = opts.margin;
+        alt = opts.alt;
+        title = opts.title;
+      }
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      // Compose alt property surrogate
+      alt = (typeof alt === 'string') ? {text: alt} : alt || {};
+      alt.text = alt.text || null;
+      alt.id = (alt.text) ? alt.id || 'qrcode-description' : null;
+
+      // Compose title property surrogate
+      title = (typeof title === 'string') ? {text: title} : title || {};
+      title.text = title.text || null;
+      title.id = (title.text) ? title.id || 'qrcode-title' : null;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var c, mc, r, mr, qrSvg='', rect;
+
+      rect = 'l' + cellSize + ',0 0,' + cellSize +
+        ' -' + cellSize + ',0 0,-' + cellSize + 'z ';
+
+      qrSvg += '<svg version="1.1" xmlns="http://www.w3.org/2000/svg"';
+      qrSvg += !opts.scalable ? ' width="' + size + 'px" height="' + size + 'px"' : '';
+      qrSvg += ' viewBox="0 0 ' + size + ' ' + size + '" ';
+      qrSvg += ' preserveAspectRatio="xMinYMin meet"';
+      qrSvg += (title.text || alt.text) ? ' role="img" aria-labelledby="' +
+          escapeXml([title.id, alt.id].join(' ').trim() ) + '"' : '';
+      qrSvg += '>';
+      qrSvg += (title.text) ? '<title id="' + escapeXml(title.id) + '">' +
+          escapeXml(title.text) + '</title>' : '';
+      qrSvg += (alt.text) ? '<description id="' + escapeXml(alt.id) + '">' +
+          escapeXml(alt.text) + '</description>' : '';
+      qrSvg += '<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>';
+      qrSvg += '<path d="';
+
+      for (r = 0; r < _this.getModuleCount(); r += 1) {
+        mr = r * cellSize + margin;
+        for (c = 0; c < _this.getModuleCount(); c += 1) {
+          if (_this.isDark(r, c) ) {
+            mc = c*cellSize+margin;
+            qrSvg += 'M' + mc + ',' + mr + rect;
+          }
+        }
+      }
+
+      qrSvg += '" stroke="transparent" fill="black"/>';
+      qrSvg += '</svg>';
+
+      return qrSvg;
+    };
+
+    _this.createDataURL = function(cellSize, margin) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      return createDataURL(size, size, function(x, y) {
+        if (min <= x && x < max && min <= y && y < max) {
+          var c = Math.floor( (x - min) / cellSize);
+          var r = Math.floor( (y - min) / cellSize);
+          return _this.isDark(r, c)? 0 : 1;
+        } else {
+          return 1;
+        }
+      } );
+    };
+
+    _this.createImgTag = function(cellSize, margin, alt) {
+
+      cellSize = cellSize || 2;
+      margin = (typeof margin == 'undefined')? cellSize * 4 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+
+      var img = '';
+      img += '<img';
+      img += '\u0020src="';
+      img += _this.createDataURL(cellSize, margin);
+      img += '"';
+      img += '\u0020width="';
+      img += size;
+      img += '"';
+      img += '\u0020height="';
+      img += size;
+      img += '"';
+      if (alt) {
+        img += '\u0020alt="';
+        img += escapeXml(alt);
+        img += '"';
+      }
+      img += '/>';
+
+      return img;
+    };
+
+    var escapeXml = function(s) {
+      var escaped = '';
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charAt(i);
+        switch(c) {
+        case '<': escaped += '&lt;'; break;
+        case '>': escaped += '&gt;'; break;
+        case '&': escaped += '&amp;'; break;
+        case '"': escaped += '&quot;'; break;
+        default : escaped += c; break;
+        }
+      }
+      return escaped;
+    };
+
+    var _createHalfASCII = function(margin) {
+      var cellSize = 1;
+      margin = (typeof margin == 'undefined')? cellSize * 2 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      var y, x, r1, r2, p;
+
+      var blocks = {
+        '██': '█',
+        '█ ': '▀',
+        ' █': '▄',
+        '  ': ' '
+      };
+
+      var blocksLastLineNoMargin = {
+        '██': '▀',
+        '█ ': '▀',
+        ' █': ' ',
+        '  ': ' '
+      };
+
+      var ascii = '';
+      for (y = 0; y < size; y += 2) {
+        r1 = Math.floor((y - min) / cellSize);
+        r2 = Math.floor((y + 1 - min) / cellSize);
+        for (x = 0; x < size; x += 1) {
+          p = '█';
+
+          if (min <= x && x < max && min <= y && y < max && _this.isDark(r1, Math.floor((x - min) / cellSize))) {
+            p = ' ';
+          }
+
+          if (min <= x && x < max && min <= y+1 && y+1 < max && _this.isDark(r2, Math.floor((x - min) / cellSize))) {
+            p += ' ';
+          }
+          else {
+            p += '█';
+          }
+
+          // Output 2 characters per pixel, to create full square. 1 character per pixels gives only half width of square.
+          ascii += (margin < 1 && y+1 >= max) ? blocksLastLineNoMargin[p] : blocks[p];
+        }
+
+        ascii += '\n';
+      }
+
+      if (size % 2 && margin > 0) {
+        return ascii.substring(0, ascii.length - size - 1) + Array(size+1).join('▀');
+      }
+
+      return ascii.substring(0, ascii.length-1);
+    };
+
+    _this.createASCII = function(cellSize, margin) {
+      cellSize = cellSize || 1;
+
+      if (cellSize < 2) {
+        return _createHalfASCII(margin);
+      }
+
+      cellSize -= 1;
+      margin = (typeof margin == 'undefined')? cellSize * 2 : margin;
+
+      var size = _this.getModuleCount() * cellSize + margin * 2;
+      var min = margin;
+      var max = size - margin;
+
+      var y, x, r, p;
+
+      var white = Array(cellSize+1).join('██');
+      var black = Array(cellSize+1).join('  ');
+
+      var ascii = '';
+      var line = '';
+      for (y = 0; y < size; y += 1) {
+        r = Math.floor( (y - min) / cellSize);
+        line = '';
+        for (x = 0; x < size; x += 1) {
+          p = 1;
+
+          if (min <= x && x < max && min <= y && y < max && _this.isDark(r, Math.floor((x - min) / cellSize))) {
+            p = 0;
+          }
+
+          // Output 2 characters per pixel, to create full square. 1 character per pixels gives only half width of square.
+          line += p ? white : black;
+        }
+
+        for (r = 0; r < cellSize; r += 1) {
+          ascii += line + '\n';
+        }
+      }
+
+      return ascii.substring(0, ascii.length-1);
+    };
+
+    _this.renderTo2dContext = function(context, cellSize) {
+      cellSize = cellSize || 2;
+      var length = _this.getModuleCount();
+      for (var row = 0; row < length; row++) {
+        for (var col = 0; col < length; col++) {
+          context.fillStyle = _this.isDark(row, col) ? 'black' : 'white';
+          context.fillRect(row * cellSize, col * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrcode.stringToBytes
+  //---------------------------------------------------------------------
+
+  qrcode.stringToBytesFuncs = {
+    'default' : function(s) {
+      var bytes = [];
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charCodeAt(i);
+        bytes.push(c & 0xff);
+      }
+      return bytes;
+    }
+  };
+
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['default'];
+
+  //---------------------------------------------------------------------
+  // qrcode.createStringToBytes
+  //---------------------------------------------------------------------
+
+  /**
+   * @param unicodeData base64 string of byte array.
+   * [16bit Unicode],[16bit Bytes], ...
+   * @param numChars
+   */
+  qrcode.createStringToBytes = function(unicodeData, numChars) {
+
+    // create conversion map.
+
+    var unicodeMap = function() {
+
+      var bin = base64DecodeInputStream(unicodeData);
+      var read = function() {
+        var b = bin.read();
+        if (b == -1) throw 'eof';
+        return b;
+      };
+
+      var count = 0;
+      var unicodeMap = {};
+      while (true) {
+        var b0 = bin.read();
+        if (b0 == -1) break;
+        var b1 = read();
+        var b2 = read();
+        var b3 = read();
+        var k = String.fromCharCode( (b0 << 8) | b1);
+        var v = (b2 << 8) | b3;
+        unicodeMap[k] = v;
+        count += 1;
+      }
+      if (count != numChars) {
+        throw count + ' != ' + numChars;
+      }
+
+      return unicodeMap;
+    }();
+
+    var unknownChar = '?'.charCodeAt(0);
+
+    return function(s) {
+      var bytes = [];
+      for (var i = 0; i < s.length; i += 1) {
+        var c = s.charCodeAt(i);
+        if (c < 128) {
+          bytes.push(c);
+        } else {
+          var b = unicodeMap[s.charAt(i)];
+          if (typeof b == 'number') {
+            if ( (b & 0xff) == b) {
+              // 1byte
+              bytes.push(b);
+            } else {
+              // 2bytes
+              bytes.push(b >>> 8);
+              bytes.push(b & 0xff);
+            }
+          } else {
+            bytes.push(unknownChar);
+          }
+        }
+      }
+      return bytes;
+    };
+  };
+
+  //---------------------------------------------------------------------
+  // QRMode
+  //---------------------------------------------------------------------
+
+  var QRMode = {
+    MODE_NUMBER :    1 << 0,
+    MODE_ALPHA_NUM : 1 << 1,
+    MODE_8BIT_BYTE : 1 << 2,
+    MODE_KANJI :     1 << 3
+  };
+
+  //---------------------------------------------------------------------
+  // QRErrorCorrectionLevel
+  //---------------------------------------------------------------------
+
+  var QRErrorCorrectionLevel = {
+    L : 1,
+    M : 0,
+    Q : 3,
+    H : 2
+  };
+
+  //---------------------------------------------------------------------
+  // QRMaskPattern
+  //---------------------------------------------------------------------
+
+  var QRMaskPattern = {
+    PATTERN000 : 0,
+    PATTERN001 : 1,
+    PATTERN010 : 2,
+    PATTERN011 : 3,
+    PATTERN100 : 4,
+    PATTERN101 : 5,
+    PATTERN110 : 6,
+    PATTERN111 : 7
+  };
+
+  //---------------------------------------------------------------------
+  // QRUtil
+  //---------------------------------------------------------------------
+
+  var QRUtil = function() {
+
+    var PATTERN_POSITION_TABLE = [
+      [],
+      [6, 18],
+      [6, 22],
+      [6, 26],
+      [6, 30],
+      [6, 34],
+      [6, 22, 38],
+      [6, 24, 42],
+      [6, 26, 46],
+      [6, 28, 50],
+      [6, 30, 54],
+      [6, 32, 58],
+      [6, 34, 62],
+      [6, 26, 46, 66],
+      [6, 26, 48, 70],
+      [6, 26, 50, 74],
+      [6, 30, 54, 78],
+      [6, 30, 56, 82],
+      [6, 30, 58, 86],
+      [6, 34, 62, 90],
+      [6, 28, 50, 72, 94],
+      [6, 26, 50, 74, 98],
+      [6, 30, 54, 78, 102],
+      [6, 28, 54, 80, 106],
+      [6, 32, 58, 84, 110],
+      [6, 30, 58, 86, 114],
+      [6, 34, 62, 90, 118],
+      [6, 26, 50, 74, 98, 122],
+      [6, 30, 54, 78, 102, 126],
+      [6, 26, 52, 78, 104, 130],
+      [6, 30, 56, 82, 108, 134],
+      [6, 34, 60, 86, 112, 138],
+      [6, 30, 58, 86, 114, 142],
+      [6, 34, 62, 90, 118, 146],
+      [6, 30, 54, 78, 102, 126, 150],
+      [6, 24, 50, 76, 102, 128, 154],
+      [6, 28, 54, 80, 106, 132, 158],
+      [6, 32, 58, 84, 110, 136, 162],
+      [6, 26, 54, 82, 110, 138, 166],
+      [6, 30, 58, 86, 114, 142, 170]
+    ];
+    var G15 = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0);
+    var G18 = (1 << 12) | (1 << 11) | (1 << 10) | (1 << 9) | (1 << 8) | (1 << 5) | (1 << 2) | (1 << 0);
+    var G15_MASK = (1 << 14) | (1 << 12) | (1 << 10) | (1 << 4) | (1 << 1);
+
+    var _this = {};
+
+    var getBCHDigit = function(data) {
+      var digit = 0;
+      while (data != 0) {
+        digit += 1;
+        data >>>= 1;
+      }
+      return digit;
+    };
+
+    _this.getBCHTypeInfo = function(data) {
+      var d = data << 10;
+      while (getBCHDigit(d) - getBCHDigit(G15) >= 0) {
+        d ^= (G15 << (getBCHDigit(d) - getBCHDigit(G15) ) );
+      }
+      return ( (data << 10) | d) ^ G15_MASK;
+    };
+
+    _this.getBCHTypeNumber = function(data) {
+      var d = data << 12;
+      while (getBCHDigit(d) - getBCHDigit(G18) >= 0) {
+        d ^= (G18 << (getBCHDigit(d) - getBCHDigit(G18) ) );
+      }
+      return (data << 12) | d;
+    };
+
+    _this.getPatternPosition = function(typeNumber) {
+      return PATTERN_POSITION_TABLE[typeNumber - 1];
+    };
+
+    _this.getMaskFunction = function(maskPattern) {
+
+      switch (maskPattern) {
+
+      case QRMaskPattern.PATTERN000 :
+        return function(i, j) { return (i + j) % 2 == 0; };
+      case QRMaskPattern.PATTERN001 :
+        return function(i, j) { return i % 2 == 0; };
+      case QRMaskPattern.PATTERN010 :
+        return function(i, j) { return j % 3 == 0; };
+      case QRMaskPattern.PATTERN011 :
+        return function(i, j) { return (i + j) % 3 == 0; };
+      case QRMaskPattern.PATTERN100 :
+        return function(i, j) { return (Math.floor(i / 2) + Math.floor(j / 3) ) % 2 == 0; };
+      case QRMaskPattern.PATTERN101 :
+        return function(i, j) { return (i * j) % 2 + (i * j) % 3 == 0; };
+      case QRMaskPattern.PATTERN110 :
+        return function(i, j) { return ( (i * j) % 2 + (i * j) % 3) % 2 == 0; };
+      case QRMaskPattern.PATTERN111 :
+        return function(i, j) { return ( (i * j) % 3 + (i + j) % 2) % 2 == 0; };
+
+      default :
+        throw 'bad maskPattern:' + maskPattern;
+      }
+    };
+
+    _this.getErrorCorrectPolynomial = function(errorCorrectLength) {
+      var a = qrPolynomial([1], 0);
+      for (var i = 0; i < errorCorrectLength; i += 1) {
+        a = a.multiply(qrPolynomial([1, QRMath.gexp(i)], 0) );
+      }
+      return a;
+    };
+
+    _this.getLengthInBits = function(mode, type) {
+
+      if (1 <= type && type < 10) {
+
+        // 1 - 9
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 10;
+        case QRMode.MODE_ALPHA_NUM : return 9;
+        case QRMode.MODE_8BIT_BYTE : return 8;
+        case QRMode.MODE_KANJI     : return 8;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else if (type < 27) {
+
+        // 10 - 26
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 12;
+        case QRMode.MODE_ALPHA_NUM : return 11;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 10;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else if (type < 41) {
+
+        // 27 - 40
+
+        switch(mode) {
+        case QRMode.MODE_NUMBER    : return 14;
+        case QRMode.MODE_ALPHA_NUM : return 13;
+        case QRMode.MODE_8BIT_BYTE : return 16;
+        case QRMode.MODE_KANJI     : return 12;
+        default :
+          throw 'mode:' + mode;
+        }
+
+      } else {
+        throw 'type:' + type;
+      }
+    };
+
+    _this.getLostPoint = function(qrcode) {
+
+      var moduleCount = qrcode.getModuleCount();
+
+      var lostPoint = 0;
+
+      // LEVEL1
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount; col += 1) {
+
+          var sameCount = 0;
+          var dark = qrcode.isDark(row, col);
+
+          for (var r = -1; r <= 1; r += 1) {
+
+            if (row + r < 0 || moduleCount <= row + r) {
+              continue;
+            }
+
+            for (var c = -1; c <= 1; c += 1) {
+
+              if (col + c < 0 || moduleCount <= col + c) {
+                continue;
+              }
+
+              if (r == 0 && c == 0) {
+                continue;
+              }
+
+              if (dark == qrcode.isDark(row + r, col + c) ) {
+                sameCount += 1;
+              }
+            }
+          }
+
+          if (sameCount > 5) {
+            lostPoint += (3 + sameCount - 5);
+          }
+        }
+      };
+
+      // LEVEL2
+
+      for (var row = 0; row < moduleCount - 1; row += 1) {
+        for (var col = 0; col < moduleCount - 1; col += 1) {
+          var count = 0;
+          if (qrcode.isDark(row, col) ) count += 1;
+          if (qrcode.isDark(row + 1, col) ) count += 1;
+          if (qrcode.isDark(row, col + 1) ) count += 1;
+          if (qrcode.isDark(row + 1, col + 1) ) count += 1;
+          if (count == 0 || count == 4) {
+            lostPoint += 3;
+          }
+        }
+      }
+
+      // LEVEL3
+
+      for (var row = 0; row < moduleCount; row += 1) {
+        for (var col = 0; col < moduleCount - 6; col += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row, col + 1)
+              &&  qrcode.isDark(row, col + 2)
+              &&  qrcode.isDark(row, col + 3)
+              &&  qrcode.isDark(row, col + 4)
+              && !qrcode.isDark(row, col + 5)
+              &&  qrcode.isDark(row, col + 6) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount - 6; row += 1) {
+          if (qrcode.isDark(row, col)
+              && !qrcode.isDark(row + 1, col)
+              &&  qrcode.isDark(row + 2, col)
+              &&  qrcode.isDark(row + 3, col)
+              &&  qrcode.isDark(row + 4, col)
+              && !qrcode.isDark(row + 5, col)
+              &&  qrcode.isDark(row + 6, col) ) {
+            lostPoint += 40;
+          }
+        }
+      }
+
+      // LEVEL4
+
+      var darkCount = 0;
+
+      for (var col = 0; col < moduleCount; col += 1) {
+        for (var row = 0; row < moduleCount; row += 1) {
+          if (qrcode.isDark(row, col) ) {
+            darkCount += 1;
+          }
+        }
+      }
+
+      var ratio = Math.abs(100 * darkCount / moduleCount / moduleCount - 50) / 5;
+      lostPoint += ratio * 10;
+
+      return lostPoint;
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // QRMath
+  //---------------------------------------------------------------------
+
+  var QRMath = function() {
+
+    var EXP_TABLE = new Array(256);
+    var LOG_TABLE = new Array(256);
+
+    // initialize tables
+    for (var i = 0; i < 8; i += 1) {
+      EXP_TABLE[i] = 1 << i;
+    }
+    for (var i = 8; i < 256; i += 1) {
+      EXP_TABLE[i] = EXP_TABLE[i - 4]
+        ^ EXP_TABLE[i - 5]
+        ^ EXP_TABLE[i - 6]
+        ^ EXP_TABLE[i - 8];
+    }
+    for (var i = 0; i < 255; i += 1) {
+      LOG_TABLE[EXP_TABLE[i] ] = i;
+    }
+
+    var _this = {};
+
+    _this.glog = function(n) {
+
+      if (n < 1) {
+        throw 'glog(' + n + ')';
+      }
+
+      return LOG_TABLE[n];
+    };
+
+    _this.gexp = function(n) {
+
+      while (n < 0) {
+        n += 255;
+      }
+
+      while (n >= 256) {
+        n -= 255;
+      }
+
+      return EXP_TABLE[n];
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // qrPolynomial
+  //---------------------------------------------------------------------
+
+  function qrPolynomial(num, shift) {
+
+    if (typeof num.length == 'undefined') {
+      throw num.length + '/' + shift;
+    }
+
+    var _num = function() {
+      var offset = 0;
+      while (offset < num.length && num[offset] == 0) {
+        offset += 1;
+      }
+      var _num = new Array(num.length - offset + shift);
+      for (var i = 0; i < num.length - offset; i += 1) {
+        _num[i] = num[i + offset];
+      }
+      return _num;
+    }();
+
+    var _this = {};
+
+    _this.getAt = function(index) {
+      return _num[index];
+    };
+
+    _this.getLength = function() {
+      return _num.length;
+    };
+
+    _this.multiply = function(e) {
+
+      var num = new Array(_this.getLength() + e.getLength() - 1);
+
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        for (var j = 0; j < e.getLength(); j += 1) {
+          num[i + j] ^= QRMath.gexp(QRMath.glog(_this.getAt(i) ) + QRMath.glog(e.getAt(j) ) );
+        }
+      }
+
+      return qrPolynomial(num, 0);
+    };
+
+    _this.mod = function(e) {
+
+      if (_this.getLength() - e.getLength() < 0) {
+        return _this;
+      }
+
+      var ratio = QRMath.glog(_this.getAt(0) ) - QRMath.glog(e.getAt(0) );
+
+      var num = new Array(_this.getLength() );
+      for (var i = 0; i < _this.getLength(); i += 1) {
+        num[i] = _this.getAt(i);
+      }
+
+      for (var i = 0; i < e.getLength(); i += 1) {
+        num[i] ^= QRMath.gexp(QRMath.glog(e.getAt(i) ) + ratio);
+      }
+
+      // recursive call
+      return qrPolynomial(num, 0).mod(e);
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // QRRSBlock
+  //---------------------------------------------------------------------
+
+  var QRRSBlock = function() {
+
+    var RS_BLOCK_TABLE = [
+
+      // L
+      // M
+      // Q
+      // H
+
+      // 1
+      [1, 26, 19],
+      [1, 26, 16],
+      [1, 26, 13],
+      [1, 26, 9],
+
+      // 2
+      [1, 44, 34],
+      [1, 44, 28],
+      [1, 44, 22],
+      [1, 44, 16],
+
+      // 3
+      [1, 70, 55],
+      [1, 70, 44],
+      [2, 35, 17],
+      [2, 35, 13],
+
+      // 4
+      [1, 100, 80],
+      [2, 50, 32],
+      [2, 50, 24],
+      [4, 25, 9],
+
+      // 5
+      [1, 134, 108],
+      [2, 67, 43],
+      [2, 33, 15, 2, 34, 16],
+      [2, 33, 11, 2, 34, 12],
+
+      // 6
+      [2, 86, 68],
+      [4, 43, 27],
+      [4, 43, 19],
+      [4, 43, 15],
+
+      // 7
+      [2, 98, 78],
+      [4, 49, 31],
+      [2, 32, 14, 4, 33, 15],
+      [4, 39, 13, 1, 40, 14],
+
+      // 8
+      [2, 121, 97],
+      [2, 60, 38, 2, 61, 39],
+      [4, 40, 18, 2, 41, 19],
+      [4, 40, 14, 2, 41, 15],
+
+      // 9
+      [2, 146, 116],
+      [3, 58, 36, 2, 59, 37],
+      [4, 36, 16, 4, 37, 17],
+      [4, 36, 12, 4, 37, 13],
+
+      // 10
+      [2, 86, 68, 2, 87, 69],
+      [4, 69, 43, 1, 70, 44],
+      [6, 43, 19, 2, 44, 20],
+      [6, 43, 15, 2, 44, 16],
+
+      // 11
+      [4, 101, 81],
+      [1, 80, 50, 4, 81, 51],
+      [4, 50, 22, 4, 51, 23],
+      [3, 36, 12, 8, 37, 13],
+
+      // 12
+      [2, 116, 92, 2, 117, 93],
+      [6, 58, 36, 2, 59, 37],
+      [4, 46, 20, 6, 47, 21],
+      [7, 42, 14, 4, 43, 15],
+
+      // 13
+      [4, 133, 107],
+      [8, 59, 37, 1, 60, 38],
+      [8, 44, 20, 4, 45, 21],
+      [12, 33, 11, 4, 34, 12],
+
+      // 14
+      [3, 145, 115, 1, 146, 116],
+      [4, 64, 40, 5, 65, 41],
+      [11, 36, 16, 5, 37, 17],
+      [11, 36, 12, 5, 37, 13],
+
+      // 15
+      [5, 109, 87, 1, 110, 88],
+      [5, 65, 41, 5, 66, 42],
+      [5, 54, 24, 7, 55, 25],
+      [11, 36, 12, 7, 37, 13],
+
+      // 16
+      [5, 122, 98, 1, 123, 99],
+      [7, 73, 45, 3, 74, 46],
+      [15, 43, 19, 2, 44, 20],
+      [3, 45, 15, 13, 46, 16],
+
+      // 17
+      [1, 135, 107, 5, 136, 108],
+      [10, 74, 46, 1, 75, 47],
+      [1, 50, 22, 15, 51, 23],
+      [2, 42, 14, 17, 43, 15],
+
+      // 18
+      [5, 150, 120, 1, 151, 121],
+      [9, 69, 43, 4, 70, 44],
+      [17, 50, 22, 1, 51, 23],
+      [2, 42, 14, 19, 43, 15],
+
+      // 19
+      [3, 141, 113, 4, 142, 114],
+      [3, 70, 44, 11, 71, 45],
+      [17, 47, 21, 4, 48, 22],
+      [9, 39, 13, 16, 40, 14],
+
+      // 20
+      [3, 135, 107, 5, 136, 108],
+      [3, 67, 41, 13, 68, 42],
+      [15, 54, 24, 5, 55, 25],
+      [15, 43, 15, 10, 44, 16],
+
+      // 21
+      [4, 144, 116, 4, 145, 117],
+      [17, 68, 42],
+      [17, 50, 22, 6, 51, 23],
+      [19, 46, 16, 6, 47, 17],
+
+      // 22
+      [2, 139, 111, 7, 140, 112],
+      [17, 74, 46],
+      [7, 54, 24, 16, 55, 25],
+      [34, 37, 13],
+
+      // 23
+      [4, 151, 121, 5, 152, 122],
+      [4, 75, 47, 14, 76, 48],
+      [11, 54, 24, 14, 55, 25],
+      [16, 45, 15, 14, 46, 16],
+
+      // 24
+      [6, 147, 117, 4, 148, 118],
+      [6, 73, 45, 14, 74, 46],
+      [11, 54, 24, 16, 55, 25],
+      [30, 46, 16, 2, 47, 17],
+
+      // 25
+      [8, 132, 106, 4, 133, 107],
+      [8, 75, 47, 13, 76, 48],
+      [7, 54, 24, 22, 55, 25],
+      [22, 45, 15, 13, 46, 16],
+
+      // 26
+      [10, 142, 114, 2, 143, 115],
+      [19, 74, 46, 4, 75, 47],
+      [28, 50, 22, 6, 51, 23],
+      [33, 46, 16, 4, 47, 17],
+
+      // 27
+      [8, 152, 122, 4, 153, 123],
+      [22, 73, 45, 3, 74, 46],
+      [8, 53, 23, 26, 54, 24],
+      [12, 45, 15, 28, 46, 16],
+
+      // 28
+      [3, 147, 117, 10, 148, 118],
+      [3, 73, 45, 23, 74, 46],
+      [4, 54, 24, 31, 55, 25],
+      [11, 45, 15, 31, 46, 16],
+
+      // 29
+      [7, 146, 116, 7, 147, 117],
+      [21, 73, 45, 7, 74, 46],
+      [1, 53, 23, 37, 54, 24],
+      [19, 45, 15, 26, 46, 16],
+
+      // 30
+      [5, 145, 115, 10, 146, 116],
+      [19, 75, 47, 10, 76, 48],
+      [15, 54, 24, 25, 55, 25],
+      [23, 45, 15, 25, 46, 16],
+
+      // 31
+      [13, 145, 115, 3, 146, 116],
+      [2, 74, 46, 29, 75, 47],
+      [42, 54, 24, 1, 55, 25],
+      [23, 45, 15, 28, 46, 16],
+
+      // 32
+      [17, 145, 115],
+      [10, 74, 46, 23, 75, 47],
+      [10, 54, 24, 35, 55, 25],
+      [19, 45, 15, 35, 46, 16],
+
+      // 33
+      [17, 145, 115, 1, 146, 116],
+      [14, 74, 46, 21, 75, 47],
+      [29, 54, 24, 19, 55, 25],
+      [11, 45, 15, 46, 46, 16],
+
+      // 34
+      [13, 145, 115, 6, 146, 116],
+      [14, 74, 46, 23, 75, 47],
+      [44, 54, 24, 7, 55, 25],
+      [59, 46, 16, 1, 47, 17],
+
+      // 35
+      [12, 151, 121, 7, 152, 122],
+      [12, 75, 47, 26, 76, 48],
+      [39, 54, 24, 14, 55, 25],
+      [22, 45, 15, 41, 46, 16],
+
+      // 36
+      [6, 151, 121, 14, 152, 122],
+      [6, 75, 47, 34, 76, 48],
+      [46, 54, 24, 10, 55, 25],
+      [2, 45, 15, 64, 46, 16],
+
+      // 37
+      [17, 152, 122, 4, 153, 123],
+      [29, 74, 46, 14, 75, 47],
+      [49, 54, 24, 10, 55, 25],
+      [24, 45, 15, 46, 46, 16],
+
+      // 38
+      [4, 152, 122, 18, 153, 123],
+      [13, 74, 46, 32, 75, 47],
+      [48, 54, 24, 14, 55, 25],
+      [42, 45, 15, 32, 46, 16],
+
+      // 39
+      [20, 147, 117, 4, 148, 118],
+      [40, 75, 47, 7, 76, 48],
+      [43, 54, 24, 22, 55, 25],
+      [10, 45, 15, 67, 46, 16],
+
+      // 40
+      [19, 148, 118, 6, 149, 119],
+      [18, 75, 47, 31, 76, 48],
+      [34, 54, 24, 34, 55, 25],
+      [20, 45, 15, 61, 46, 16]
+    ];
+
+    var qrRSBlock = function(totalCount, dataCount) {
+      var _this = {};
+      _this.totalCount = totalCount;
+      _this.dataCount = dataCount;
+      return _this;
+    };
+
+    var _this = {};
+
+    var getRsBlockTable = function(typeNumber, errorCorrectionLevel) {
+
+      switch(errorCorrectionLevel) {
+      case QRErrorCorrectionLevel.L :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 0];
+      case QRErrorCorrectionLevel.M :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 1];
+      case QRErrorCorrectionLevel.Q :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 2];
+      case QRErrorCorrectionLevel.H :
+        return RS_BLOCK_TABLE[(typeNumber - 1) * 4 + 3];
+      default :
+        return undefined;
+      }
+    };
+
+    _this.getRSBlocks = function(typeNumber, errorCorrectionLevel) {
+
+      var rsBlock = getRsBlockTable(typeNumber, errorCorrectionLevel);
+
+      if (typeof rsBlock == 'undefined') {
+        throw 'bad rs block @ typeNumber:' + typeNumber +
+            '/errorCorrectionLevel:' + errorCorrectionLevel;
+      }
+
+      var length = rsBlock.length / 3;
+
+      var list = [];
+
+      for (var i = 0; i < length; i += 1) {
+
+        var count = rsBlock[i * 3 + 0];
+        var totalCount = rsBlock[i * 3 + 1];
+        var dataCount = rsBlock[i * 3 + 2];
+
+        for (var j = 0; j < count; j += 1) {
+          list.push(qrRSBlock(totalCount, dataCount) );
+        }
+      }
+
+      return list;
+    };
+
+    return _this;
+  }();
+
+  //---------------------------------------------------------------------
+  // qrBitBuffer
+  //---------------------------------------------------------------------
+
+  var qrBitBuffer = function() {
+
+    var _buffer = [];
+    var _length = 0;
+
+    var _this = {};
+
+    _this.getBuffer = function() {
+      return _buffer;
+    };
+
+    _this.getAt = function(index) {
+      var bufIndex = Math.floor(index / 8);
+      return ( (_buffer[bufIndex] >>> (7 - index % 8) ) & 1) == 1;
+    };
+
+    _this.put = function(num, length) {
+      for (var i = 0; i < length; i += 1) {
+        _this.putBit( ( (num >>> (length - i - 1) ) & 1) == 1);
+      }
+    };
+
+    _this.getLengthInBits = function() {
+      return _length;
+    };
+
+    _this.putBit = function(bit) {
+
+      var bufIndex = Math.floor(_length / 8);
+      if (_buffer.length <= bufIndex) {
+        _buffer.push(0);
+      }
+
+      if (bit) {
+        _buffer[bufIndex] |= (0x80 >>> (_length % 8) );
+      }
+
+      _length += 1;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrNumber
+  //---------------------------------------------------------------------
+
+  var qrNumber = function(data) {
+
+    var _mode = QRMode.MODE_NUMBER;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var data = _data;
+
+      var i = 0;
+
+      while (i + 2 < data.length) {
+        buffer.put(strToNum(data.substring(i, i + 3) ), 10);
+        i += 3;
+      }
+
+      if (i < data.length) {
+        if (data.length - i == 1) {
+          buffer.put(strToNum(data.substring(i, i + 1) ), 4);
+        } else if (data.length - i == 2) {
+          buffer.put(strToNum(data.substring(i, i + 2) ), 7);
+        }
+      }
+    };
+
+    var strToNum = function(s) {
+      var num = 0;
+      for (var i = 0; i < s.length; i += 1) {
+        num = num * 10 + chatToNum(s.charAt(i) );
+      }
+      return num;
+    };
+
+    var chatToNum = function(c) {
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      }
+      throw 'illegal char :' + c;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrAlphaNum
+  //---------------------------------------------------------------------
+
+  var qrAlphaNum = function(data) {
+
+    var _mode = QRMode.MODE_ALPHA_NUM;
+    var _data = data;
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _data.length;
+    };
+
+    _this.write = function(buffer) {
+
+      var s = _data;
+
+      var i = 0;
+
+      while (i + 1 < s.length) {
+        buffer.put(
+          getCode(s.charAt(i) ) * 45 +
+          getCode(s.charAt(i + 1) ), 11);
+        i += 2;
+      }
+
+      if (i < s.length) {
+        buffer.put(getCode(s.charAt(i) ), 6);
+      }
+    };
+
+    var getCode = function(c) {
+
+      if ('0' <= c && c <= '9') {
+        return c.charCodeAt(0) - '0'.charCodeAt(0);
+      } else if ('A' <= c && c <= 'Z') {
+        return c.charCodeAt(0) - 'A'.charCodeAt(0) + 10;
+      } else {
+        switch (c) {
+        case ' ' : return 36;
+        case '$' : return 37;
+        case '%' : return 38;
+        case '*' : return 39;
+        case '+' : return 40;
+        case '-' : return 41;
+        case '.' : return 42;
+        case '/' : return 43;
+        case ':' : return 44;
+        default :
+          throw 'illegal char :' + c;
+        }
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qr8BitByte
+  //---------------------------------------------------------------------
+
+  var qr8BitByte = function(data) {
+
+    var _mode = QRMode.MODE_8BIT_BYTE;
+    var _data = data;
+    var _bytes = qrcode.stringToBytes(data);
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return _bytes.length;
+    };
+
+    _this.write = function(buffer) {
+      for (var i = 0; i < _bytes.length; i += 1) {
+        buffer.put(_bytes[i], 8);
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // qrKanji
+  //---------------------------------------------------------------------
+
+  var qrKanji = function(data) {
+
+    var _mode = QRMode.MODE_KANJI;
+    var _data = data;
+
+    var stringToBytes = qrcode.stringToBytesFuncs['SJIS'];
+    if (!stringToBytes) {
+      throw 'sjis not supported.';
+    }
+    !function(c, code) {
+      // self test for sjis support.
+      var test = stringToBytes(c);
+      if (test.length != 2 || ( (test[0] << 8) | test[1]) != code) {
+        throw 'sjis not supported.';
+      }
+    }('\u53cb', 0x9746);
+
+    var _bytes = stringToBytes(data);
+
+    var _this = {};
+
+    _this.getMode = function() {
+      return _mode;
+    };
+
+    _this.getLength = function(buffer) {
+      return ~~(_bytes.length / 2);
+    };
+
+    _this.write = function(buffer) {
+
+      var data = _bytes;
+
+      var i = 0;
+
+      while (i + 1 < data.length) {
+
+        var c = ( (0xff & data[i]) << 8) | (0xff & data[i + 1]);
+
+        if (0x8140 <= c && c <= 0x9FFC) {
+          c -= 0x8140;
+        } else if (0xE040 <= c && c <= 0xEBBF) {
+          c -= 0xC140;
+        } else {
+          throw 'illegal char at ' + (i + 1) + '/' + c;
+        }
+
+        c = ( (c >>> 8) & 0xff) * 0xC0 + (c & 0xff);
+
+        buffer.put(c, 13);
+
+        i += 2;
+      }
+
+      if (i < data.length) {
+        throw 'illegal char at ' + (i + 1);
+      }
+    };
+
+    return _this;
+  };
+
+  //=====================================================================
+  // GIF Support etc.
+  //
+
+  //---------------------------------------------------------------------
+  // byteArrayOutputStream
+  //---------------------------------------------------------------------
+
+  var byteArrayOutputStream = function() {
+
+    var _bytes = [];
+
+    var _this = {};
+
+    _this.writeByte = function(b) {
+      _bytes.push(b & 0xff);
+    };
+
+    _this.writeShort = function(i) {
+      _this.writeByte(i);
+      _this.writeByte(i >>> 8);
+    };
+
+    _this.writeBytes = function(b, off, len) {
+      off = off || 0;
+      len = len || b.length;
+      for (var i = 0; i < len; i += 1) {
+        _this.writeByte(b[i + off]);
+      }
+    };
+
+    _this.writeString = function(s) {
+      for (var i = 0; i < s.length; i += 1) {
+        _this.writeByte(s.charCodeAt(i) );
+      }
+    };
+
+    _this.toByteArray = function() {
+      return _bytes;
+    };
+
+    _this.toString = function() {
+      var s = '';
+      s += '[';
+      for (var i = 0; i < _bytes.length; i += 1) {
+        if (i > 0) {
+          s += ',';
+        }
+        s += _bytes[i];
+      }
+      s += ']';
+      return s;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // base64EncodeOutputStream
+  //---------------------------------------------------------------------
+
+  var base64EncodeOutputStream = function() {
+
+    var _buffer = 0;
+    var _buflen = 0;
+    var _length = 0;
+    var _base64 = '';
+
+    var _this = {};
+
+    var writeEncoded = function(b) {
+      _base64 += String.fromCharCode(encode(b & 0x3f) );
+    };
+
+    var encode = function(n) {
+      if (n < 0) {
+        // error.
+      } else if (n < 26) {
+        return 0x41 + n;
+      } else if (n < 52) {
+        return 0x61 + (n - 26);
+      } else if (n < 62) {
+        return 0x30 + (n - 52);
+      } else if (n == 62) {
+        return 0x2b;
+      } else if (n == 63) {
+        return 0x2f;
+      }
+      throw 'n:' + n;
+    };
+
+    _this.writeByte = function(n) {
+
+      _buffer = (_buffer << 8) | (n & 0xff);
+      _buflen += 8;
+      _length += 1;
+
+      while (_buflen >= 6) {
+        writeEncoded(_buffer >>> (_buflen - 6) );
+        _buflen -= 6;
+      }
+    };
+
+    _this.flush = function() {
+
+      if (_buflen > 0) {
+        writeEncoded(_buffer << (6 - _buflen) );
+        _buffer = 0;
+        _buflen = 0;
+      }
+
+      if (_length % 3 != 0) {
+        // padding
+        var padlen = 3 - _length % 3;
+        for (var i = 0; i < padlen; i += 1) {
+          _base64 += '=';
+        }
+      }
+    };
+
+    _this.toString = function() {
+      return _base64;
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // base64DecodeInputStream
+  //---------------------------------------------------------------------
+
+  var base64DecodeInputStream = function(str) {
+
+    var _str = str;
+    var _pos = 0;
+    var _buffer = 0;
+    var _buflen = 0;
+
+    var _this = {};
+
+    _this.read = function() {
+
+      while (_buflen < 8) {
+
+        if (_pos >= _str.length) {
+          if (_buflen == 0) {
+            return -1;
+          }
+          throw 'unexpected end of file./' + _buflen;
+        }
+
+        var c = _str.charAt(_pos);
+        _pos += 1;
+
+        if (c == '=') {
+          _buflen = 0;
+          return -1;
+        } else if (c.match(/^\s$/) ) {
+          // ignore if whitespace.
+          continue;
+        }
+
+        _buffer = (_buffer << 6) | decode(c.charCodeAt(0) );
+        _buflen += 6;
+      }
+
+      var n = (_buffer >>> (_buflen - 8) ) & 0xff;
+      _buflen -= 8;
+      return n;
+    };
+
+    var decode = function(c) {
+      if (0x41 <= c && c <= 0x5a) {
+        return c - 0x41;
+      } else if (0x61 <= c && c <= 0x7a) {
+        return c - 0x61 + 26;
+      } else if (0x30 <= c && c <= 0x39) {
+        return c - 0x30 + 52;
+      } else if (c == 0x2b) {
+        return 62;
+      } else if (c == 0x2f) {
+        return 63;
+      } else {
+        throw 'c:' + c;
+      }
+    };
+
+    return _this;
+  };
+
+  //---------------------------------------------------------------------
+  // gifImage (B/W)
+  //---------------------------------------------------------------------
+
+  var gifImage = function(width, height) {
+
+    var _width = width;
+    var _height = height;
+    var _data = new Array(width * height);
+
+    var _this = {};
+
+    _this.setPixel = function(x, y, pixel) {
+      _data[y * _width + x] = pixel;
+    };
+
+    _this.write = function(out) {
+
+      //---------------------------------
+      // GIF Signature
+
+      out.writeString('GIF87a');
+
+      //---------------------------------
+      // Screen Descriptor
+
+      out.writeShort(_width);
+      out.writeShort(_height);
+
+      out.writeByte(0x80); // 2bit
+      out.writeByte(0);
+      out.writeByte(0);
+
+      //---------------------------------
+      // Global Color Map
+
+      // black
+      out.writeByte(0x00);
+      out.writeByte(0x00);
+      out.writeByte(0x00);
+
+      // white
+      out.writeByte(0xff);
+      out.writeByte(0xff);
+      out.writeByte(0xff);
+
+      //---------------------------------
+      // Image Descriptor
+
+      out.writeString(',');
+      out.writeShort(0);
+      out.writeShort(0);
+      out.writeShort(_width);
+      out.writeShort(_height);
+      out.writeByte(0);
+
+      //---------------------------------
+      // Local Color Map
+
+      //---------------------------------
+      // Raster Data
+
+      var lzwMinCodeSize = 2;
+      var raster = getLZWRaster(lzwMinCodeSize);
+
+      out.writeByte(lzwMinCodeSize);
+
+      var offset = 0;
+
+      while (raster.length - offset > 255) {
+        out.writeByte(255);
+        out.writeBytes(raster, offset, 255);
+        offset += 255;
+      }
+
+      out.writeByte(raster.length - offset);
+      out.writeBytes(raster, offset, raster.length - offset);
+      out.writeByte(0x00);
+
+      //---------------------------------
+      // GIF Terminator
+      out.writeString(';');
+    };
+
+    var bitOutputStream = function(out) {
+
+      var _out = out;
+      var _bitLength = 0;
+      var _bitBuffer = 0;
+
+      var _this = {};
+
+      _this.write = function(data, length) {
+
+        if ( (data >>> length) != 0) {
+          throw 'length over';
+        }
+
+        while (_bitLength + length >= 8) {
+          _out.writeByte(0xff & ( (data << _bitLength) | _bitBuffer) );
+          length -= (8 - _bitLength);
+          data >>>= (8 - _bitLength);
+          _bitBuffer = 0;
+          _bitLength = 0;
+        }
+
+        _bitBuffer = (data << _bitLength) | _bitBuffer;
+        _bitLength = _bitLength + length;
+      };
+
+      _this.flush = function() {
+        if (_bitLength > 0) {
+          _out.writeByte(_bitBuffer);
+        }
+      };
+
+      return _this;
+    };
+
+    var getLZWRaster = function(lzwMinCodeSize) {
+
+      var clearCode = 1 << lzwMinCodeSize;
+      var endCode = (1 << lzwMinCodeSize) + 1;
+      var bitLength = lzwMinCodeSize + 1;
+
+      // Setup LZWTable
+      var table = lzwTable();
+
+      for (var i = 0; i < clearCode; i += 1) {
+        table.add(String.fromCharCode(i) );
+      }
+      table.add(String.fromCharCode(clearCode) );
+      table.add(String.fromCharCode(endCode) );
+
+      var byteOut = byteArrayOutputStream();
+      var bitOut = bitOutputStream(byteOut);
+
+      // clear code
+      bitOut.write(clearCode, bitLength);
+
+      var dataIndex = 0;
+
+      var s = String.fromCharCode(_data[dataIndex]);
+      dataIndex += 1;
+
+      while (dataIndex < _data.length) {
+
+        var c = String.fromCharCode(_data[dataIndex]);
+        dataIndex += 1;
+
+        if (table.contains(s + c) ) {
+
+          s = s + c;
+
+        } else {
+
+          bitOut.write(table.indexOf(s), bitLength);
+
+          if (table.size() < 0xfff) {
+
+            if (table.size() == (1 << bitLength) ) {
+              bitLength += 1;
+            }
+
+            table.add(s + c);
+          }
+
+          s = c;
+        }
+      }
+
+      bitOut.write(table.indexOf(s), bitLength);
+
+      // end code
+      bitOut.write(endCode, bitLength);
+
+      bitOut.flush();
+
+      return byteOut.toByteArray();
+    };
+
+    var lzwTable = function() {
+
+      var _map = {};
+      var _size = 0;
+
+      var _this = {};
+
+      _this.add = function(key) {
+        if (_this.contains(key) ) {
+          throw 'dup key:' + key;
+        }
+        _map[key] = _size;
+        _size += 1;
+      };
+
+      _this.size = function() {
+        return _size;
+      };
+
+      _this.indexOf = function(key) {
+        return _map[key];
+      };
+
+      _this.contains = function(key) {
+        return typeof _map[key] != 'undefined';
+      };
+
+      return _this;
+    };
+
+    return _this;
+  };
+
+  var createDataURL = function(width, height, getPixel) {
+    var gif = gifImage(width, height);
+    for (var y = 0; y < height; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        gif.setPixel(x, y, getPixel(x, y) );
+      }
+    }
+
+    var b = byteArrayOutputStream();
+    gif.write(b);
+
+    var base64 = base64EncodeOutputStream();
+    var bytes = b.toByteArray();
+    for (var i = 0; i < bytes.length; i += 1) {
+      base64.writeByte(bytes[i]);
+    }
+    base64.flush();
+
+    return 'data:image/gif;base64,' + base64;
+  };
+
+  //---------------------------------------------------------------------
+  // returns qrcode function.
+
+  return qrcode;
+}();
+
+// multibyte support
+!function() {
+
+  qrcode.stringToBytesFuncs['UTF-8'] = function(s) {
+    // http://stackoverflow.com/questions/18729405/how-to-convert-utf8-string-to-byte-array
+    function toUTF8Array(str) {
+      var utf8 = [];
+      for (var i=0; i < str.length; i++) {
+        var charcode = str.charCodeAt(i);
+        if (charcode < 0x80) utf8.push(charcode);
+        else if (charcode < 0x800) {
+          utf8.push(0xc0 | (charcode >> 6),
+              0x80 | (charcode & 0x3f));
+        }
+        else if (charcode < 0xd800 || charcode >= 0xe000) {
+          utf8.push(0xe0 | (charcode >> 12),
+              0x80 | ((charcode>>6) & 0x3f),
+              0x80 | (charcode & 0x3f));
+        }
+        // surrogate pair
+        else {
+          i++;
+          // UTF-16 encodes 0x10000-0x10FFFF by
+          // subtracting 0x10000 and splitting the
+          // 20 bits of 0x0-0xFFFFF into two halves
+          charcode = 0x10000 + (((charcode & 0x3ff)<<10)
+            | (str.charCodeAt(i) & 0x3ff));
+          utf8.push(0xf0 | (charcode >>18),
+              0x80 | ((charcode>>12) & 0x3f),
+              0x80 | ((charcode>>6) & 0x3f),
+              0x80 | (charcode & 0x3f));
+        }
+      }
+      return utf8;
+    }
+    return toUTF8Array(s);
+  };
+
+}();
+
+(function (factory) {
+  if (typeof define === 'function' && define.amd) {
+      define([], factory);
+  } else if (typeof exports === 'object') {
+      module.exports = factory();
+  }
+}(function () {
+    return qrcode;
+}));
+</script><script>var BACKEND={mode:'firebase'};BACKEND.ready=new Promise(function(a,b){BACKEND._res=a;BACKEND._rej=b;});// ================== COMPETIPADEL · BACKEND FIREBASE (lógica) ==================
 // Usa un adaptador A (real: Firebase; pruebas: simulado) y expone la misma
 // interfaz que el backend de Apps Script.
 window.makeFbBackend = function (A, cfg) {
@@ -1382,7 +3679,7 @@ VIEWS.retaForm = function (rt) {
 VIEWS.reta = function (rt) {
   var r = X.R[rt.id]; if (!r) return empty('reta', 'La reta no existe.');
   var sd = X.SD[r.sedeId], sub = S.filt['r' + r.id] || 'part', can = canR(r), rounds = retaRounds(r), cur = +r.ronda || 0;
-  var html = '<div class="tban"><div class="row"><div class="lg">' + (sd && sd.logo ? img(sd.logo) : ICON.reta) + '</div><div class="grow"><h1>' + (r.tipo === 'rey' ? 'Rey de la cancha' : 'Royal') + '</h1><div class="sm mut">' + h(sd ? sd.nombre : '') + ' · ' + fdate(r.fecha) + ' ' + h(r.hora || '') + '</div><div class="row" style="gap:6px;margin-top:6px"><span class="bdg">' + (r.modo === 'par' ? 'Parejas' : 'Individual') + '</span><span class="bdg v">' + (r.regla === 'fijo' ? r.juegos + ' juegos' : 'A ' + r.juegos) + '</span><span class="bdg y">' + r.canchas + ' canchas</span>' + (r.estado === 'fin' ? '<span class="bdg g">Terminada</span>' : '') + '</div></div></div></div>';
+  var html = '<div class="tban"><div class="row"><div class="lg">' + (sd && sd.logo ? img(sd.logo) : ICON.reta) + '</div><div class="grow"><h1>' + (r.tipo === 'rey' ? 'Rey de la cancha' : 'Royal') + '</h1><div class="sm mut">' + h(sd ? sd.nombre : '') + ' · ' + fdate(r.fecha) + ' ' + h(r.hora || '') + '</div><div class="row" style="gap:6px;margin-top:6px"><span class="bdg">' + (r.modo === 'par' ? 'Parejas' : 'Individual') + '</span><span class="bdg v">' + (r.regla === 'fijo' ? r.juegos + ' juegos' : 'A ' + r.juegos) + '</span><span class="bdg y">' + r.canchas + ' canchas</span>' + (r.estado === 'fin' ? '<span class="bdg g">Terminada</span>' : '') + '</div></div></div><button class="btn sm" style="margin-top:12px" data-a="imgReta" data-id="' + r.id + '">🖼 Imagen para WhatsApp</button></div>';
   html += '<div class="stabs"><button class="' + (sub === 'part' ? 'on' : '') + '" data-a="filt" data-k="r' + r.id + '" data-v="part">Partidos</button><button class="' + (sub === 'rank' ? 'on' : '') + '" data-a="filt" data-k="r' + r.id + '" data-v="rank">Ranking reta</button><button class="' + (sub === 'jug' ? 'on' : '') + '" data-a="filt" data-k="r' + r.id + '" data-v="jug">Jugadores</button></div>';
   if (sub === 'part') {
     if (can && r.estado !== 'fin') {
@@ -1393,11 +3690,11 @@ VIEWS.reta = function (rt) {
     if (!cur) html += empty('dice', 'Aún no hay partidos. ' + (can ? 'Toca "Sortear ronda 1".' : ''));
     for (var k = cur; k >= 1; k--) {
       var rm = rounds[k] || [];
-      html += '<div class="tl"><b>Ronda ' + k + '</b>' + (k === cur && r.estado !== 'fin' ? '<span class="bdg y">En juego</span>' : '') + (can ? '<span class="grow"></span><button class="btn sm" style="height:28px;font-size:11.5px" data-a="waRonda" data-r="' + r.id + '" data-n="' + k + '">📲 Avisar</button>' : '') + '</div>' + rm.map(function (m) { return matchCard(m, r.tipo === 'rey' ? (m.cancha === 1 ? 'REY' : 'C' + m.cancha) : null); }).join('');
+      html += '<div class="tl"><b>Ronda ' + k + '</b>' + (k === cur && r.estado !== 'fin' ? '<span class="bdg y">En juego</span>' : '') + '<span class="grow"></span>' + shareMini('data-k="retaR" data-r="' + r.id + '" data-n="' + k + '"') + (can ? '<button class="btn sm" style="height:28px;font-size:11.5px" data-a="waRonda" data-r="' + r.id + '" data-n="' + k + '">📲 Avisar</button>' : '') + '</div>' + rm.map(function (m) { return matchCard(m, r.tipo === 'rey' ? (m.cancha === 1 ? 'REY' : 'C' + m.cancha) : null); }).join('');
       var rest = restOf(r, rm); if (rest.length) html += '<div class="xs mut" style="margin:6px 2px">Descansan: ' + rest.map(function (i) { return h(pName(i)); }).join(', ') + '</div>';
     }
   } else if (sub === 'rank') {
-    html += retaRankHTML(r);
+    html += shareBar('data-k="retaK" data-r="' + r.id + '"', 'Imagen del ranking de la reta') + retaRankHTML(r);
   } else {
     html += '<div class="card">' + (r.modo === 'par' ? (r.parejas || []).map(function (p, i) { return '<div class="li"><span class="pos">' + (i + 1) + '</span><span class="grow">' + teamName(p) + '</span></div>'; }).join('') : (r.jugadores || []).map(function (id) { var j = X.J[id] || {}; return '<div class="li tap" data-a="player" data-id="' + id + '"><div class="ini">' + h(ini(j.nombre)) + '</div><div class="grow b">' + h(j.nombre) + '</div><span class="bdg">' + h(j.fuerza || '') + '</span><span class="elo">' + X.elo[id] + '</span></div>'; }).join('')) + '</div>';
     if (can && (isOrg() || r.creador === myId())) html += '<div class="row" style="margin-top:12px;gap:8px"><button class="btn grow" data-a="go" data-v="retaForm" data-id="' + r.id + '">' + ICON.edit + 'Editar</button><button class="btn bad" data-a="retaDel" data-id="' + r.id + '">Borrar</button></div>';
@@ -1456,7 +3753,7 @@ VIEWS.torneo = function (rt) {
   var sd = X.SD[t.sedeId], sub = S.filt['t' + t.id] || 'parejas', can = canT(t);
   var cats = t.cats || []; var cat = S.cat[t.id] && cats.indexOf(S.cat[t.id]) >= 0 ? S.cat[t.id] : cats[0];
   var html = '<div class="tban"><div class="row"><div class="lg">' + (sd && sd.logo ? img(sd.logo) : ICON.trophy.replace('<svg', '<svg width="28"')) + '</div><div class="grow"><h1>' + h(t.nombre) + '</h1><div class="sm mut">' + h(sd ? sd.nombre : '') + ' · ' + fdate(t.fecha) + ' · ' + h(t.hora || '') + '</div><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">' + (isLiga(t) ? '<span class="bdg y">LIGA · ' + (t.jornadas || 0) + ' jornadas · cada ' + (t.cada || 7) + ' días</span>' : '') + '<span class="bdg y">' + (t.canchas || 0) + ' canchas</span><span class="bdg v">' + h(t.formato || '') + '</span><span class="bdg ' + (t.estado === 'fin' ? 'g' : '') + '">' + ({ insc: 'Inscripciones', juego: 'En juego', fin: 'Terminado' }[t.estado] || '') + '</span></div></div></div>' +
-    '<div class="row" style="gap:8px;margin-top:12px"><button class="btn sm pri" data-a="tvOpen" data-id="' + t.id + '">' + ICON.tv + 'Pantalla TV</button>' + (can ? '<button class="btn sm" data-a="go" data-v="torneoForm" data-id="' + t.id + '">' + ICON.edit + 'Editar</button>' : '') + '</div></div>';
+    '<div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn sm pri" data-a="tvOpen" data-id="' + t.id + '">' + ICON.tv + 'Pantalla TV</button><button class="btn sm" data-a="imgMenu" data-id="' + t.id + '">🖼 Imagen</button>' + (can ? '<button class="btn sm" data-a="go" data-v="torneoForm" data-id="' + t.id + '">' + ICON.edit + 'Editar</button>' : '') + '</div></div>';
   var tsp = torneoSponsors(t).filter(function (p) { return !p.casa; });
   if (tsp.length) html += '<div class="chips" style="margin-top:10px">' + tsp.map(function (p) { return '<button class="chip" style="color:var(--ice);height:40px" data-a="sponsor" data-id="' + p.id + '"><span style="width:26px;height:26px;display:inline-block;border-radius:7px;overflow:hidden">' + spLogo(p, 'ini" style="width:26px;height:26px;border-radius:7px') + '</span>' + h(p.nombre) + '</button>'; }).join('') + '</div>';
   var subs = isLiga(t) ? [['parejas', 'Parejas'], ['tabla', 'Tabla'], ['jornadas', 'Jornadas'], ['cuadro', 'Liguilla'], ['ranking', 'Ranking']] : [['parejas', 'Parejas'], ['grupos', 'Grupos'], ['partidos', 'Partidos'], ['cuadro', 'Eliminatoria'], ['ranking', 'Ranking']];
@@ -1471,7 +3768,7 @@ var TSUB = {};
 TSUB.parejas = function (t, cat, can) {
   var ps = pairsOf(t.id, cat).slice().sort(function (a, b) { return pairElo(b) - pairElo(a); });
   var q = (S.filt['tq' + t.id] || '').toLowerCase();
-  var html = '';
+  var html = ps.length ? shareBar('data-k="t" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="parejas"', 'Imagen de las parejas inscritas') : '';
   if (can) html += '<div class="row" style="gap:8px"><button class="btn pri grow" data-a="pairAdd" data-t="' + t.id + '" data-c="' + h(cat) + '">' + ICON.plus + 'Agregar pareja</button><button class="btn" data-a="pairBulk" data-t="' + t.id + '" data-c="' + h(cat) + '">Carga masiva</button></div>';
   html += '<div class="row" style="margin:12px 0 4px"><div class="grow sm mut"><b style="color:#fff">' + ps.length + (t.cupo > 0 ? ' / ' + t.cupo : '') + '</b> parejas en ' + h(cat) + ' · <b style="color:#fff">' + pairsOf(t.id).length + '</b> en total</div></div>';
   if (ps.length > 12) html += '<input class="inp" placeholder="Buscar pareja…" data-filt="tq' + t.id + '" value="' + h(S.filt['tq' + t.id] || '') + '" style="height:42px;margin-bottom:8px">';
@@ -1487,6 +3784,7 @@ TSUB.grupos = function (t, cat, can) {
   var cfg = cs.cfg;
   if (can) html += '<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn pri grow" data-a="draw" data-t="' + t.id + '" data-c="' + h(cat) + '">' + ICON.dice + (cs.gs.length ? 'Volver a sortear' : 'Sortear grupos') + '</button>' + (cs.gs.length ? '<button class="btn" data-a="resched" data-t="' + t.id + '">Reasignar canchas</button>' : '') + '</div><div class="xs mut" style="margin:6px 0 10px">Grupos de ' + cfg.tam + ' · pasan ' + cfg.pasan + (cfg.extra ? ' + ' + cfg.extra + ' mejores' : '') + ' · el sorteo equilibra por ELO de la pareja (serpentina).</div>';
   if (!cs.gs.length) return html + empty('dice', 'Aún no se sortean los grupos de ' + h(cat) + '.');
+  html += shareBar('data-k="t" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="grupos"', 'Imagen de los grupos para WhatsApp');
   html += '<div class="gridA">' + cs.gs.map(function (g) { return groupCard(t, cat, g, cs); }).join('') + '</div>';
   return html;
 };
@@ -1501,10 +3799,11 @@ TSUB.partidos = function (t, cat, can) {
   ms.sort(function (a, b) { return (a.turno || 999) - (b.turno || 999) || (a.cancha || 0) - (b.cancha || 0); });
   var html = '<div class="chips"><button class="chip ' + (f === 'pend' ? 'on' : '') + '" data-a="filt" data-k="tp' + t.id + '" data-v="pend">Por jugar</button><button class="chip ' + (f === 'fin' ? 'on' : '') + '" data-a="filt" data-k="tp' + t.id + '" data-v="fin">Jugados</button><button class="chip ' + (f === 'all' ? 'on' : '') + '" data-a="filt" data-k="tp' + t.id + '" data-v="all">Todos</button></div>';
   if (!ms.length) return html + empty('court', f === 'pend' ? 'No hay partidos pendientes en ' + h(cat) + '.' : 'Sin partidos.');
+  html += shareBar('data-k="t" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="turno"', 'Imagen de los siguientes partidos');
   var lastT = null, max = 160, shown = 0;
   ms.forEach(function (m) {
     if (shown >= max) return;
-    if (m.turno !== lastT) { lastT = m.turno; html += '<div class="tl"><b>Turno ' + (m.turno || '–') + '</b>' + (m.hora ? '<span>' + h(m.hora) + '</span>' : '') + (can ? '<span class="grow"></span><button class="btn sm" style="height:28px;font-size:11.5px" data-a="waTurno" data-t="' + t.id + '" data-c="' + h(cat) + '" data-n="' + (m.turno || '') + '">📲 Avisar</button>' : '') + '</div>'; }
+    if (m.turno !== lastT) { lastT = m.turno; html += '<div class="tl"><b>Turno ' + (m.turno || '–') + '</b>' + (m.hora ? '<span>' + h(m.hora) + '</span>' : '') + '<span class="grow"></span>' + shareMini('data-k="t" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="turno" data-n="' + (m.turno || '') + '"') + (can ? '<button class="btn sm" style="height:28px;font-size:11.5px" data-a="schedEdit" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="turno" data-n="' + (m.turno || '') + '">✏️</button><button class="btn sm" style="height:28px;font-size:11.5px" data-a="waTurno" data-t="' + t.id + '" data-c="' + h(cat) + '" data-n="' + (m.turno || '') + '">📲 Avisar</button>' : '') + '</div>'; }
     html += matchCard(m); shown++;
   });
   if (ms.length > max) html += '<div class="xs mut" style="margin-top:8px">Mostrando ' + max + ' de ' + ms.length + '. Filtra por "Por jugar" para ver los siguientes.</div>';
@@ -1515,7 +3814,7 @@ TSUB.tabla = function (t, cat, can) {
   if (can) html += '<div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn pri grow" data-a="genLiga" data-t="' + t.id + '" data-c="' + h(cat) + '">' + ICON.dice + (cs.gs.length ? 'Regenerar calendario' : 'Generar calendario') + '</button>' + (cs.gs.length ? '<button class="btn" data-a="reschedL" data-t="' + t.id + '">Reasignar canchas</button>' : '') + '</div>';
   html += '<div class="xs mut" style="margin:6px 0 10px">' + np + ' parejas · ' + (t.jornadas || 0) + ' jornadas cada ' + (t.cada || 7) + ' días · ' + (cfg.pasan ? 'pasan ' + cfg.pasan + ' a liguilla' : 'sin liguilla') + '</div>';
   if (!cs.gs.length) return html + empty('dice', 'Registra las parejas de ' + h(cat) + ' y genera el calendario.');
-  return html + groupCard(t, cat, 'Liga', cs) + '<div class="xs dim">Orden: partidos ganados, resultado entre ellos, diferencia de juegos y juegos a favor.' + (cfg.pasan ? ' Al terminar la liga, quedan tachadas las parejas que no entran a liguilla.' : '') + '</div>';
+  return html + shareBar('data-k="t" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="tabla"', 'Imagen de la tabla actualizada') + groupCard(t, cat, 'Liga', cs) + '<div class="xs dim">Orden: partidos ganados, resultado entre ellos, diferencia de juegos y juegos a favor.' + (cfg.pasan ? ' Al terminar la liga, quedan tachadas las parejas que no entran a liguilla.' : '') + '</div>';
 };
 TSUB.jornadas = function (t, cat, can) {
   var ms = matchesOf(t.id, cat, 'liga'), html = '';
@@ -1525,11 +3824,12 @@ TSUB.jornadas = function (t, cat, can) {
   var def = null; for (var i = 1; i <= J; i++) if (pend[i]) { def = i; break; }
   var sel = +S.filt['tj' + t.id + cat] || def || J;
   html += '<div class="chips">' + Array.from({ length: J }, function (_, i) { var n = i + 1; return '<button class="chip ' + (n === sel ? 'on' : '') + '" data-a="filt" data-k="tj' + t.id + h(cat) + '" data-v="' + n + '">J' + n + (pend[n] ? '' : ' ✓') + '</button>'; }).join('') + '</div>';
-  var jm = ms.filter(function (m) { return m.jornada === sel; }).sort(function (a, b) { return (a.turno || 0) - (b.turno || 0) || (a.cancha || 0) - (b.cancha || 0); });
+  html += shareBar('data-k="t" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="jornada" data-n="' + sel + '"', 'Imagen de la jornada ' + sel + (pend[sel] ? ' (partidos)' : ' (resultados)'));
+  var jm = ms.filter(function (m) { return m.jornada === sel; }).sort(function (a, b) { return String(a.hora || '').localeCompare(String(b.hora || '')) || (a.turno || 0) - (b.turno || 0) || (a.cancha || 0) - (b.cancha || 0); });
   var f = jm[0] && jm[0].fecha;
-  html += '<div class="tl"><b>Jornada ' + sel + '</b>' + (f ? '<span>' + fdate(f) + '</span>' : '') + '<span>' + jm.filter(function (m) { return m.estado === 'fin'; }).length + '/' + jm.length + ' jugados</span>' + (can ? '<span class="grow"></span><button class="btn sm" style="height:28px;font-size:11.5px" data-a="waJornada" data-t="' + t.id + '" data-c="' + h(cat) + '" data-n="' + sel + '">📲 Avisar</button>' : '') + '</div>';
+  html += '<div class="tl"><b>Jornada ' + sel + '</b>' + (f ? '<span>' + fdate(f) + '</span>' : '') + '<span>' + jm.filter(function (m) { return m.estado === 'fin'; }).length + '/' + jm.length + ' jugados</span><span class="grow"></span>' + (can ? '<button class="btn sm" style="height:28px;font-size:11.5px" data-a="schedEdit" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="jornada" data-n="' + sel + '">✏️ Fecha y horas</button><button class="btn sm" style="height:28px;font-size:11.5px" data-a="waJornada" data-t="' + t.id + '" data-c="' + h(cat) + '" data-n="' + sel + '">📲 Avisar</button>' : '') + '</div>';
   var lastT = null;
-  jm.forEach(function (m) { if (m.turno !== lastT) { lastT = m.turno; html += '<div class="xs mut" style="margin:10px 2px 6px">Turno ' + (m.turno || '–') + (m.hora ? ' · ' + h(m.hora) : '') + '</div>'; } html += matchCard(m); });
+  jm.forEach(function (m) { var key = m.hora || ('T' + m.turno); if (key !== lastT) { lastT = key; html += '<div class="xs mut" style="margin:10px 2px 6px">' + (m.hora ? '🕒 ' + h(m.hora) : 'Turno ' + (m.turno || '–')) + '</div>'; } html += matchCard(m); });
   var on = {}; jm.forEach(function (m) { on[m.pa] = 1; on[m.pb] = 1; });
   var rest = pairsOf(t.id, cat).filter(function (p) { return !on[p.id]; });
   if (rest.length) html += '<div class="xs mut" style="margin:10px 2px">Descansa: ' + rest.map(function (p) { return pairName(p); }).join(', ') + '</div>';
@@ -1544,6 +3844,7 @@ TSUB.cuadro = function (t, cat, can) {
   }
   if (!em.length) return html + empty('trophy', isLiga(t) ? 'La liguilla se arma con las mejores parejas de la tabla.' : 'El cuadro se arma con las parejas que pasan de grupos.');
   var R = {}; em.forEach(function (m) { (R[m.ronda] = R[m.ronda] || []).push(m); });
+  html += shareBar('data-k="t" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="cuadro"', 'Imagen ' + (isLiga(t) ? 'de la liguilla' : 'del cuadro'));
   html += bracketHTML(R);
   return html;
 };
@@ -1585,6 +3886,7 @@ TSUB.ranking = function (t) {
   rows.sort(mode === 'elo' ? function (a, b) { return X.elo[b.id] - X.elo[a.id]; } : function (a, b) { return b.pg - a.pg || (b.gf - b.gc) - (a.gf - a.gc) || b.d - a.d; });
   var html = eliteHTML(t.elite) + '<div class="chips"><button class="chip ' + (mode === 'elo' ? 'on' : '') + '" data-a="filt" data-k="tr' + t.id + '" data-v="elo">Por ELO</button><button class="chip ' + (mode === 'tor' ? 'on' : '') + '" data-a="filt" data-k="tr' + t.id + '" data-v="tor">Por desempeño</button></div>';
   if (!rows.length) return html + empty('rank', 'Sin jugadores todavía.');
+  html += shareBar('data-k="t" data-t="' + t.id + '" data-c="" data-x="ranking"', 'Imagen del ranking actualizado');
   html += '<div class="card" style="padding:4px 10px">' + rows.slice(0, 300).map(function (x, i) {
     var j = X.J[x.id] || {};
     return '<div class="rk tap" data-a="player" data-id="' + x.id + '"><div class="pos" style="' + (i < 3 ? 'color:' + ['var(--gold)', 'var(--silver)', 'var(--bronze)'][i] : '') + '">' + (i + 1) + '</div><div class="ini">' + h(ini(j.nombre)) + '</div><div style="min-width:0"><div class="b ell">' + h(j.nombre || '—') + '</div><div class="st">' + h(x.cat) + ' · ' + x.pg + '/' + x.pj + ' G · ' + (x.gf - x.gc >= 0 ? '+' : '') + (x.gf - x.gc) + ' juegos</div></div><div style="text-align:right"><div class="elo">' + X.elo[x.id] + '</div><div class="xs" style="color:' + (x.d >= 0 ? 'var(--ok)' : 'var(--bad)') + '">' + (x.d >= 0 ? '▲' : '▼') + Math.abs(x.d) + '</div></div></div>';
@@ -1620,7 +3922,7 @@ VIEWS.ranking = function () {
   if (mode === 'gen') {
     var f = S.filt.rk || 'all';
     var list = X.rank.filter(function (j) { return f === 'all' || j.fuerza === f; });
-    html += eliteHTML(X.cfg.eliteRanking || []) + fuerzaChips('rk');
+    html += eliteHTML(X.cfg.eliteRanking || []) + '<button class="btn sm blk" style="margin-bottom:10px" data-a="imgRank">🖼 Compartir ranking en WhatsApp</button>' + fuerzaChips('rk');
     if (!q) html += podiumHTML(list, function (j) { return X.elo[j.id]; });
     html += '<input class="inp" placeholder="Buscar jugador…" data-filt="rkq" value="' + h(S.filt.rkq || '') + '" style="height:42px;margin-bottom:8px">';
     var rest = list.filter(function (j) { return !q || j.nombre.toLowerCase().indexOf(q) >= 0; });
@@ -1636,7 +3938,7 @@ VIEWS.ranking = function () {
     var loc = eloRun(ms, false), fs = S.filt.rkf || 'all';
     var rows = S.d.jugadores.filter(function (j) { return loc.ST[j.id].pj > 0 && (fs === 'all' || j.fuerza === fs); }).sort(function (a, b) { return loc.E[b.id] - loc.E[a.id] || loc.ST[b.id].pg - loc.ST[a.id].pg; });
     html += '<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:10px"><div class="ini" style="width:46px;height:46px">' + (sd.logo ? img(sd.logo) : h(ini(sd.nombre))) + '</div><div class="grow"><div class="b">' + h(sd.nombre) + '</div><div class="xs mut">' + ms.length + ' partidos jugados aquí · ' + rows.length + ' jugadores</div></div></div>';
-    html += fuerzaChips('rkf');
+    html += shareBar('data-k="sede" data-s="' + sid + '"', 'Imagen del ranking de ' + h(sd.nombre)) + fuerzaChips('rkf');
     if (!rows.length) return html + empty('rank', 'Todavía no hay partidos terminados en esta sede.');
     html += podiumHTML(rows, function (j) { return loc.E[j.id]; });
     html += '<div class="card" style="padding:4px 10px">' + rows.map(function (j, i) { return rankRowX(j, i + 1, loc.E[j.id], loc.ST[j.id], ' · general ' + X.elo[j.id]); }).join('') + '</div>';
@@ -1655,7 +3957,7 @@ VIEWS.ranking = function () {
   if (!rs.length) return html + empty('reta', 'Aún no hay retas jugadas.');
   var rid = S.filt.rkr && X.R[S.filt.rkr] ? S.filt.rkr : rs[0].id, r = X.R[rid];
   html += pickChips('rkr', rs.slice(0, 30).map(function (x) { return [x.id, fdate(x.fecha) + ' ' + h(x.hora || '') + ' · ' + h((X.SD[x.sedeId] || {}).nombre || '')]; }), rid);
-  html += '<div class="row" style="margin-bottom:10px"><div class="grow sm mut">' + (r.tipo === 'rey' ? 'Rey de la cancha' : 'Royal') + ' · ' + (r.modo === 'par' ? 'Parejas' : 'Individual') + ' · ronda ' + r.ronda + '</div><button class="btn sm" data-a="go" data-v="reta" data-id="' + r.id + '">Abrir</button></div>';
+  html += '<div class="row" style="margin-bottom:10px"><div class="grow sm mut">' + (r.tipo === 'rey' ? 'Rey de la cancha' : 'Royal') + ' · ' + (r.modo === 'par' ? 'Parejas' : 'Individual') + ' · ronda ' + r.ronda + '</div><button class="btn sm" data-a="go" data-v="reta" data-id="' + r.id + '">Abrir</button></div>' + shareBar('data-k="retaK" data-r="' + r.id + '"', 'Imagen del ranking de la reta');
   return html + retaRankHTML(r);
 };
 
@@ -1828,7 +4130,7 @@ function msgGroup(title, ms) {
   });
   return out + '\nVer en vivo: ' + appLink();
 }
-function waModal(title, ms) {
+function waModal(title, ms, imgAttrs) {
   ms = ms.filter(function (m) { return m.estado !== 'bye' && (m.torneoId ? m.pa && m.pb : true); });
   if (!ms.length) return toast('No hay partidos para avisar.', true);
   var g = msgGroup(title, ms), seen = {}, rows = '';
@@ -1841,6 +4143,7 @@ function waModal(title, ms) {
     });
   });
   modal('<h3>Avisar por WhatsApp</h3><div class="xs mut" style="margin:-6px 0 12px">' + h(title) + '</div>' +
+    (imgAttrs ? shareBar(imgAttrs, 'Enviar como IMAGEN (recomendado)') : '') +
     '<div class="card glow"><div class="b" style="margin-bottom:6px">Mensaje para el grupo</div><div class="xs mut" style="white-space:pre-wrap;max-height:140px;overflow:auto;margin-bottom:10px">' + h(g) + '</div><div class="row" style="gap:8px"><a class="btn sm pri grow" href="' + h(waLink('', g)) + '" target="_blank" rel="noopener">Enviar a un grupo o chat</a><button class="btn sm" data-a="waCopy">Copiar</button></div></div>' +
     '<div class="sec"><h2>Mensaje a cada jugador</h2><div class="ln"></div></div><div class="xs mut" style="margin-bottom:6px">Toca WhatsApp en cada uno: se abre el chat con su mensaje listo, solo le das enviar.</div><div class="card" style="padding:4px 12px">' + rows + '</div>' +
     '<div class="acts"><button class="btn ghost" data-a="close">Cerrar</button></div>');
@@ -1856,6 +4159,319 @@ function myNext() {
     return (m.a || []).concat(m.b || []).indexOf(me) >= 0;
   }).sort(function (x, y) { return String(mCtx(x).fecha + (x.hora || '') + (x.turno || 0)).localeCompare(String(mCtx(y).fecha + (y.hora || '') + (y.turno || 0))); });
 }
+
+// =================== IMÁGENES PARA WHATSAPP ===================
+var IMG = { W: 1080, P: 56 };
+function loadImg(src) {
+  return new Promise(function (res) {
+    if (!src) return res(null);
+    function go(s) { var im = new Image(); im.onload = function () { res(im); }; im.onerror = function () { res(null); }; im.src = s; }
+    if (/^fs:/.test(src) && BACKEND.img) BACKEND.img(src.slice(3)).then(function (d) { d ? go(d) : res(null); }, function () { res(null); });
+    else go(src);
+    setTimeout(function () { res(null); }, 6000);
+  });
+}
+function svgImg(svg, size) { return loadImg('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '"'))); }
+function fit(ctx, t, w) { t = String(t == null ? '' : t); if (ctx.measureText(t).width <= w) return t; while (t.length > 1 && ctx.measureText(t + '…').width > w) t = t.slice(0, -1); return t + '…'; }
+function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+var F1 = "'Chakra Petch', 'Inter', system-ui, sans-serif", F2 = "'Inter', system-ui, sans-serif";
+function card(ctx, x, y, w, h) {
+  ctx.save(); rr(ctx, x, y, w, h, 22); ctx.fillStyle = 'rgba(10,28,60,.92)'; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(0,229,255,.35)'; ctx.stroke(); ctx.restore();
+}
+function secTitle(ctx, t, y) {
+  ctx.fillStyle = '#38bdff'; ctx.font = '700 30px ' + F1; ctx.textBaseline = 'alphabetic';
+  ctx.fillText(t.toUpperCase(), IMG.P, y + 34);
+  var w = ctx.measureText(t.toUpperCase()).width;
+  var g = ctx.createLinearGradient(IMG.P + w + 16, 0, IMG.W - IMG.P, 0); g.addColorStop(0, 'rgba(0,229,255,.5)'); g.addColorStop(1, 'rgba(0,229,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(IMG.P + w + 16, y + 24, IMG.W - IMG.P * 2 - w - 16, 2);
+}
+// ---- bloques: cada uno con h() y draw()
+var BLK = {
+  kv: {
+    h: function (b) { return Math.ceil(b.items.length / 2) * 104 + 16; },
+    draw: function (ctx, b, y) {
+      var cw = (IMG.W - IMG.P * 2 - 16) / 2;
+      b.items.forEach(function (it, i) {
+        var x = IMG.P + (i % 2) * (cw + 16), yy = y + Math.floor(i / 2) * 104;
+        card(ctx, x, yy, cw, 92);
+        ctx.fillStyle = '#86a3c7'; ctx.font = '600 22px ' + F2; ctx.fillText(it[0].toUpperCase(), x + 24, yy + 36);
+        ctx.fillStyle = '#ffffff'; ctx.font = '700 32px ' + F2; ctx.fillText(fit(ctx, it[1], cw - 48), x + 24, yy + 76);
+      });
+    }
+  },
+  names: {
+    h: function (b) { return 60 + Math.ceil(b.list.length / 2) * 54 + 30; },
+    draw: function (ctx, b, y) {
+      secTitle(ctx, b.title, y);
+      var h = BLK.names.h(b) - 60, cw = (IMG.W - IMG.P * 2) / 2;
+      card(ctx, IMG.P, y + 56, IMG.W - IMG.P * 2, h - 8);
+      b.list.forEach(function (n, i) {
+        var x = IMG.P + 28 + (i % 2) * cw, yy = y + 56 + 46 + Math.floor(i / 2) * 54;
+        ctx.fillStyle = '#00e5ff'; ctx.font = '700 24px ' + F1; ctx.fillText(String(i + 1).padStart(2, '0'), x, yy);
+        ctx.fillStyle = '#eaf7ff'; ctx.font = '500 28px ' + F2; ctx.fillText(fit(ctx, n, cw - 90), x + 48, yy);
+      });
+    }
+  },
+  matches: {
+    h: function (b) { return 60 + b.list.length * 112; },
+    draw: function (ctx, b, y) {
+      if (b.title) secTitle(ctx, b.title, y);
+      b.list.forEach(function (m, i) {
+        var yy = y + 60 + i * 112, x = IMG.P, w = IMG.W - IMG.P * 2;
+        card(ctx, x, yy, w, 100);
+        rr(ctx, x + 14, yy + 14, 84, 72, 14); ctx.fillStyle = 'rgba(0,229,255,.12)'; ctx.fill();
+        ctx.textAlign = 'center'; ctx.fillStyle = '#00e5ff'; ctx.font = '700 ' + (String(m.c).length > 2 ? 24 : 34) + 'px ' + F1; ctx.fillText(m.c || '–', x + 56, yy + 56);
+        ctx.fillStyle = '#86a3c7'; ctx.font = '600 14px ' + F2; ctx.fillText(m.cl || 'CANCHA', x + 56, yy + 78); ctx.textAlign = 'left';
+        var fin = m.sa != null && m.sa !== '', aw = fin && +m.sa > +m.sb, bw = fin && +m.sb > +m.sa;
+        ctx.font = (aw ? '700 ' : '500 ') + '27px ' + F2; ctx.fillStyle = fin && !aw ? '#86a3c7' : '#ffffff'; ctx.fillText(fit(ctx, m.a, w - 230), x + 120, yy + 44);
+        ctx.font = (bw ? '700 ' : '500 ') + '27px ' + F2; ctx.fillStyle = fin && !bw ? '#86a3c7' : '#ffffff'; ctx.fillText(fit(ctx, m.b, w - 230), x + 120, yy + 82);
+        ctx.textAlign = 'right'; ctx.font = '700 34px ' + F1;
+        if (fin) { ctx.fillStyle = aw ? '#00e5ff' : '#86a3c7'; ctx.fillText(m.sa, x + w - 28, yy + 46); ctx.fillStyle = bw ? '#00e5ff' : '#86a3c7'; ctx.fillText(m.sb, x + w - 28, yy + 84); }
+        else if (m.hr) { ctx.fillStyle = '#ffd166'; ctx.font = '700 28px ' + F1; ctx.fillText(m.hr, x + w - 28, yy + 62); }
+        ctx.textAlign = 'left';
+      });
+    }
+  },
+  table: {
+    h: function (b) { return (b.title ? 60 : 0) + 64 + b.rows.length * 54 + 22; },
+    draw: function (ctx, b, y, x0, w0) {
+      var x = x0 || IMG.P, w = w0 || IMG.W - IMG.P * 2, grid = !!x0, head = grid ? 96 : 64;
+      if (b.title && !grid) { secTitle(ctx, b.title, y); y += 60; }
+      var h = head + b.rows.length * 54 + 12;
+      card(ctx, x, y, w, h);
+      if (grid) { ctx.fillStyle = '#ffffff'; ctx.font = '700 26px ' + F1; ctx.fillText(fit(ctx, (b.title || '').toUpperCase(), w - 40), x + 22, y + 40); }
+      var cols = b.cols, nameW = w - 44 - 56 - (cols.length - 2) * (b.cw || 72) + (grid ? 14 : 0);
+      ctx.font = '600 18px ' + F2; ctx.fillStyle = '#4d6788';
+      ctx.fillText(cols[0], x + 22, y + head - 22); ctx.fillText(cols[1], x + 70, y + head - 22);
+      ctx.textAlign = 'right';
+      for (var c = 2; c < cols.length; c++) ctx.fillText(cols[c], x + w - 22 - (cols.length - 1 - c) * (b.cw || 72), y + head - 22);
+      ctx.textAlign = 'left';
+      b.rows.forEach(function (r, i) {
+        var yy = y + head + i * 54;
+        if (r.q) { ctx.fillStyle = 'rgba(0,229,255,.08)'; ctx.fillRect(x + 2, yy, w - 4, 54); ctx.fillStyle = '#00e5ff'; ctx.fillRect(x + 2, yy, 5, 54); }
+        ctx.fillStyle = 'rgba(90,180,255,.14)'; ctx.fillRect(x + 16, yy, w - 32, 1);
+        var medal = ['#ffd166', '#cfe3ff', '#ffab70'][i];
+        ctx.font = '700 24px ' + F1; ctx.fillStyle = b.medals && medal ? medal : '#86a3c7'; ctx.fillText(r.v[0], x + 22, yy + 36);
+        ctx.font = (r.q ? '600 ' : '500 ') + (grid ? '21px ' : '25px ') + F2; ctx.fillStyle = r.out ? '#4d6788' : '#eaf7ff';
+        var nm = fit(ctx, r.v[1], nameW); ctx.fillText(nm, x + 70, yy + 36);
+        if (r.out) { var tw = ctx.measureText(nm).width; ctx.fillStyle = 'rgba(255,77,109,.85)'; ctx.fillRect(x + 70, yy + 27, tw, 3); }
+        ctx.textAlign = 'right';
+        for (var c = 2; c < r.v.length; c++) {
+          var last = c === r.v.length - 1;
+          ctx.font = (last && b.hiLast ? '700 28px ' : '600 24px ') + (last && b.hiLast ? F1 : F2);
+          ctx.fillStyle = last && b.hiLast ? '#00e5ff' : r.out ? '#4d6788' : '#cfe3ff';
+          ctx.fillText(r.v[c], x + w - 22 - (r.v.length - 1 - c) * (b.cw || 72), yy + 36);
+        }
+        ctx.textAlign = 'left';
+      });
+    }
+  },
+  tables2: {
+    h: function (b) { var t = 60; for (var i = 0; i < b.tables.length; i += 2) t += Math.max(108 + b.tables[i].rows.length * 54, b.tables[i + 1] ? 108 + b.tables[i + 1].rows.length * 54 : 0) + 16; return t; },
+    draw: function (ctx, b, y) {
+      secTitle(ctx, b.title, y); y += 60;
+      var cw = (IMG.W - IMG.P * 2 - 20) / 2;
+      for (var i = 0; i < b.tables.length; i += 2) {
+        var h = 0;
+        [b.tables[i], b.tables[i + 1]].forEach(function (t, k) {
+          if (!t) return;
+          var tt = Object.assign({}, t, { cw: 58 });
+          BLK.table.draw(ctx, tt, y, IMG.P + k * (cw + 20), cw);
+          h = Math.max(h, 108 + t.rows.length * 54);
+        });
+        y += h + 16;
+      }
+    }
+  },
+  bracket: {
+    h: function (b) { return 60 + b.rounds.reduce(function (s, r) { return s + 52 + r.list.length * 112; }, 0); },
+    draw: function (ctx, b, y) {
+      secTitle(ctx, b.title, y); y += 60;
+      b.rounds.forEach(function (r) {
+        ctx.fillStyle = '#ffd166'; ctx.font = '700 24px ' + F1; ctx.fillText(r.name.toUpperCase(), IMG.P, y + 32);
+        BLK.matches.draw(ctx, { title: '', list: r.list }, y - 8);
+        y += 52 + r.list.length * 112;
+      });
+    }
+  },
+  note: {
+    h: function () { return 60; },
+    draw: function (ctx, b, y) { ctx.fillStyle = '#86a3c7'; ctx.font = '500 24px ' + F2; ctx.textAlign = 'center'; ctx.fillText(b.text, IMG.W / 2, y + 36); ctx.textAlign = 'left'; }
+  }
+};
+function drawQR(ctx, text, x, y, size) {
+  if (typeof qrcode !== 'function') return false;
+  try {
+    var q = qrcode(0, 'M'); q.addData(text); q.make();
+    var n = q.getModuleCount(), cell = Math.floor((size - 24) / n), off = Math.floor((size - cell * n) / 2);
+    rr(ctx, x, y, size, size, 18); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.fillStyle = '#031026';
+    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (q.isDark(r, c)) ctx.fillRect(x + off + c * cell, y + off + r * cell, cell, cell);
+    return true;
+  } catch (e) { return false; }
+}
+// spec: { title, sub, kicker, pages: [[blocks...]], sponsors: [p...] }
+function renderImages(spec) {
+  var link = appLink();
+  return Promise.all([
+    (BACKEND.mode === 'firebase' || BACKEND.mode === 'web' ? loadImg('icons/icon-512.png') : Promise.resolve(null)).then(function (im) { return im || svgImg(logo(), 240); }),
+    Promise.all((spec.sponsors || []).slice(0, 6).map(function (p) { return loadImg(p.logo).then(function (im) { return { p: p, im: im }; }); })),
+    (document.fonts && document.fonts.ready) ? document.fonts.ready.catch(function () {}) : Promise.resolve()
+  ]).then(function (res) {
+    var lg = res[0], sps = res[1];
+    return spec.pages.map(function (blocks, pi) {
+      var H = 370 + blocks.reduce(function (s, b) { return s + BLK[b.type].h(b) + 24; }, 0) + (sps.length ? 190 : 0) + 300;
+      var cv = document.createElement('canvas'); cv.width = IMG.W; cv.height = H;
+      var ctx = cv.getContext('2d');
+      // fondo
+      var g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#02060f'); g.addColorStop(.5, '#04102a'); g.addColorStop(1, '#02060f');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, IMG.W, H);
+      var rg = ctx.createRadialGradient(IMG.W * .85, 0, 10, IMG.W * .85, 0, 700); rg.addColorStop(0, 'rgba(0,200,255,.28)'); rg.addColorStop(1, 'rgba(0,200,255,0)');
+      ctx.fillStyle = rg; ctx.fillRect(0, 0, IMG.W, H);
+      var rg2 = ctx.createRadialGradient(0, H, 10, 0, H, 800); rg2.addColorStop(0, 'rgba(37,99,255,.28)'); rg2.addColorStop(1, 'rgba(37,99,255,0)');
+      ctx.fillStyle = rg2; ctx.fillRect(0, 0, IMG.W, H);
+      ctx.strokeStyle = 'rgba(0,229,255,.05)'; ctx.lineWidth = 1;
+      for (var gx = 0; gx < IMG.W; gx += 54) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
+      for (var gy = 0; gy < H; gy += 54) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(IMG.W, gy); ctx.stroke(); }
+      // encabezado
+      if (lg) { ctx.save(); ctx.shadowColor = 'rgba(0,229,255,.8)'; ctx.shadowBlur = 30; ctx.drawImage(lg, IMG.P - 6, 44, 120, 120); ctx.restore(); }
+      ctx.font = '700 52px ' + F1; ctx.fillStyle = '#eaf7ff'; ctx.fillText('COMPETI', IMG.P + 130, 104);
+      var cw0 = ctx.measureText('COMPETI').width; ctx.fillStyle = '#00e5ff'; ctx.fillText('PADEL', IMG.P + 130 + cw0, 104);
+      ctx.font = '600 20px ' + F2; ctx.fillStyle = '#38bdff'; ctx.fillText('TORNEOS · RETAS · RANKING', IMG.P + 132, 140);
+      if (spec.pages.length > 1) { ctx.textAlign = 'right'; ctx.fillStyle = '#86a3c7'; ctx.font = '600 24px ' + F2; ctx.fillText((pi + 1) + '/' + spec.pages.length, IMG.W - IMG.P, 104); ctx.textAlign = 'left'; }
+      if (spec.kicker) { ctx.font = '700 24px ' + F1; var kw = ctx.measureText(spec.kicker.toUpperCase()).width + 36; rr(ctx, IMG.P, 196, kw, 44, 12); ctx.fillStyle = 'rgba(255,209,102,.15)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,209,102,.5)'; ctx.stroke(); ctx.fillStyle = '#ffd166'; ctx.fillText(spec.kicker.toUpperCase(), IMG.P + 18, 227); }
+      ctx.font = '700 50px ' + F1; ctx.fillStyle = '#ffffff'; ctx.fillText(fit(ctx, spec.title, IMG.W - IMG.P * 2), IMG.P, 296);
+      if (spec.sub) { ctx.font = '500 26px ' + F2; ctx.fillStyle = '#86a3c7'; ctx.fillText(fit(ctx, spec.sub, IMG.W - IMG.P * 2), IMG.P, 332); }
+      var y = 370;
+      blocks.forEach(function (b) { BLK[b.type].draw(ctx, b, y); y += BLK[b.type].h(b) + 24; });
+      // patrocinadores
+      if (sps.length) {
+        ctx.fillStyle = '#ffd166'; ctx.font = '700 20px ' + F2; ctx.textAlign = 'center'; ctx.fillText('PATROCINADORES', IMG.W / 2, y + 20); ctx.textAlign = 'left';
+        var n = sps.length, bw = Math.min(150, (IMG.W - IMG.P * 2 - (n - 1) * 18) / n), sx = (IMG.W - (n * bw + (n - 1) * 18)) / 2;
+        sps.forEach(function (s, i) {
+          var x = sx + i * (bw + 18), yy = y + 40;
+          rr(ctx, x, yy, bw, 110, 18); ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.fill(); ctx.strokeStyle = 'rgba(0,229,255,.25)'; ctx.stroke();
+          if (s.im) { var sc = Math.min((bw - 24) / s.im.width, 70 / s.im.height); ctx.drawImage(s.im, x + (bw - s.im.width * sc) / 2, yy + 10 + (70 - s.im.height * sc) / 2, s.im.width * sc, s.im.height * sc); }
+          else { ctx.fillStyle = '#00e5ff'; ctx.font = '700 34px ' + F1; ctx.textAlign = 'center'; ctx.fillText(ini(s.p.nombre), x + bw / 2, yy + 58); ctx.textAlign = 'left'; }
+          ctx.fillStyle = '#cfe3ff'; ctx.font = '600 15px ' + F2; ctx.textAlign = 'center'; ctx.fillText(fit(ctx, s.p.nombre, bw - 12), x + bw / 2, yy + 100); ctx.textAlign = 'left';
+        });
+        y += 190;
+      }
+      // pie con link y QR
+      card(ctx, IMG.P, y, IMG.W - IMG.P * 2, 250);
+      var hasQR = drawQR(ctx, link, IMG.W - IMG.P - 226, y + 22, 206);
+      ctx.fillStyle = '#00e5ff'; ctx.font = '700 34px ' + F1; ctx.fillText('Descarga la app', IMG.P + 32, y + 70);
+      ctx.fillStyle = '#eaf7ff'; ctx.font = '500 24px ' + F2;
+      ctx.fillText('Resultados en vivo, tus partidos', IMG.P + 32, y + 116); ctx.fillText('y el Ranking Diamante de Tepic.', IMG.P + 32, y + 148);
+      ctx.fillStyle = '#7fd8ff'; ctx.font = '600 22px ' + F2;
+      var lw = IMG.W - IMG.P * 2 - 64 - (hasQR ? 230 : 0), lt = link.replace(/^https?:\/\//, '');
+      ctx.fillText(fit(ctx, lt, lw), IMG.P + 32, y + 200);
+      if (hasQR) { ctx.fillStyle = '#86a3c7'; ctx.font = '500 18px ' + F2; ctx.fillText('Escanea el QR →', IMG.P + 32, y + 230); }
+      return cv;
+    });
+  });
+}
+function shareImages(spec, text) {
+  busy(true);
+  renderImages(spec).then(function (cvs) {
+    return Promise.all(cvs.map(function (cv, i) { return new Promise(function (res) { cv.toBlob(function (b) { res({ blob: b, url: cv.toDataURL('image/png'), name: 'competipadel-' + (spec.file || 'imagen') + (cvs.length > 1 ? '-' + (i + 1) : '') + '.png' }); }, 'image/png'); }); }));
+  }).then(function (imgs) {
+    busy(false);
+    SHARE = { imgs: imgs, text: (text || spec.title) + '\nDescarga la app: ' + appLink() };
+    modal('<h3>Imagen para WhatsApp</h3><div class="xs mut" style="margin:-6px 0 12px">' + imgs.length + (imgs.length > 1 ? ' imágenes' : ' imagen') + ' lista · toca Enviar y elige WhatsApp. Si no aparece, deja presionada la imagen para guardarla</div>' +
+      '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px">' + imgs.map(function (x) { return '<img src="' + x.url + '" style="width:' + (imgs.length > 1 ? '78%' : '100%') + ';flex:none;border-radius:14px;border:1px solid var(--line2)">'; }).join('') + '</div>' +
+      '<div class="acts"><button class="btn pri" data-a="shImg">Enviar imagen por WhatsApp</button><button class="btn" data-a="dlImg">Descargar</button></div><button class="btn ghost blk" style="margin-top:10px" data-a="close">Cerrar</button>');
+  }).catch(function (e) { busy(false); toast('No se pudo crear la imagen: ' + e.message, true); });
+}
+var SHARE = null;
+// ---- armado de contenido
+function imgPairsName(p) { return p ? pName(p.j1) + ' / ' + pName(p.j2) : 'Por definir'; }
+function imgMatch(m) {
+  var A = m.torneoId ? imgPairsName(X.P[m.pa]) : (m.a || []).map(function (i) { return pName(i); }).join(' / ');
+  var B = m.torneoId ? imgPairsName(X.P[m.pb]) : (m.b || []).map(function (i) { return pName(i); }).join(' / ');
+  var fin = m.estado === 'fin';
+  return { c: m.cancha || '–', a: A, b: B, sa: fin ? m.ga : null, sb: fin ? m.gb : null, hr: m.hora || '' };
+}
+function chunk(a, n) { var o = []; for (var i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; }
+function imgRetaSpec(r) {
+  var sd = X.SD[r.sedeId], cur = +r.ronda || 0, pages = [];
+  var info = { type: 'kv', items: [['Fecha', fdate(r.fecha)], ['Hora', r.hora || '—'], ['Sede', sd ? sd.nombre : '—'], ['Juego', (r.tipo === 'rey' ? 'Rey de la cancha' : 'Royal') + ' · ' + (r.modo === 'par' ? 'Parejas' : 'Individual')], ['Partidos', r.regla === 'fijo' ? r.juegos + ' juegos' : 'A ' + r.juegos + ' juegos'], ['Canchas', String(r.canchas)]] };
+  var list = r.modo === 'par' ? (r.parejas || []).map(function (p) { return pName(p[0], true) + ' / ' + pName(p[1], true); }) : (r.jugadores || []).map(function (id) { return pName(id, true); });
+  var p1 = [info, { type: 'names', title: (r.modo === 'par' ? 'Parejas' : 'Jugadores') + ' (' + list.length + ')', list: list }];
+  if (cur > 0) {
+    var rm = (X.MR[r.id] || []).filter(function (m) { return m.ronda === cur; }).sort(function (a, b) { return a.cancha - b.cancha; });
+    p1.push({ type: 'matches', title: 'Ronda ' + cur, list: rm.map(function (m) { var x = imgMatch(m); if (r.tipo === 'rey') { x.c = m.cancha === 1 ? 'REY' : 'C' + m.cancha; } return x; }) });
+  }
+  pages.push(p1);
+  if (cur > 0) {
+    var tb = retaTable(r).slice(0, 16);
+    pages.push([{ type: 'table', title: 'Ranking de la reta', cols: ['#', 'Jugador', 'PJ', 'PG', 'JUEGOS'], medals: true, hiLast: true, cw: 90, rows: tb.map(function (x, i) { return { q: i < 3, v: [String(i + 1), pName(x.id, true), String(x.pj), String(x.pg), String(x.gf)] }; }) }]);
+  }
+  return { file: 'reta', kicker: r.estado === 'fin' ? 'Reta terminada' : cur ? 'Reta en juego' : '¡Reta abierta!', title: (r.tipo === 'rey' ? 'Rey de la cancha' : 'Royal') + ' · ' + (sd ? sd.nombre : ''), sub: fdate(r.fecha) + ' · ' + (r.hora || ''), pages: pages, sponsors: globalSponsors() };
+}
+function groupTableBlock(t, cat, g, cs) {
+  var tb = cs.tabs[g];
+  return { title: g === 'Liga' ? 'Tabla general' : 'Grupo ' + g, cols: ['#', 'Pareja', 'PJ', 'PG', '+/-'], rows: tb.rows.map(function (r, i) { var st = cs.status[r.p.id]; return { q: st === 'q', out: st === 'out', v: [String(i + 1), imgPairsName(r.p), String(r.pj), String(r.pg), (r.gf - r.gc > 0 ? '+' : '') + (r.gf - r.gc)] }; }) };
+}
+function imgTorneoSpecs(t, kind, cat, n) {
+  var sd = X.SD[t.sedeId], base = { title: t.nombre, sub: (sd ? sd.nombre + ' · ' : '') + fdate(t.fecha) + (cat ? ' · ' + cat : ''), sponsors: torneoSponsors(t), file: (isLiga(t) ? 'liga' : 'torneo') + '-' + kind };
+  var cs = cat ? catStatus(t, cat) : null;
+  if (kind === 'grupos') {
+    var tabs = cs.gs.map(function (g) { return groupTableBlock(t, cat, g, cs); });
+    return Object.assign(base, { kicker: 'Fase de grupos', pages: chunk(tabs, 8).map(function (ch) { return [{ type: 'tables2', title: 'Grupos ' + cat, tables: ch }]; }) });
+  }
+  if (kind === 'tabla') {
+    var tb = groupTableBlock(t, cat, 'Liga', cs);
+    return Object.assign(base, { kicker: 'Tabla general' + (curJornada(t) ? ' · Jornada ' + curJornada(t) : ''), pages: chunk(tb.rows, 20).map(function (rows) { return [Object.assign({ type: 'table', medals: true }, tb, { rows: rows, title: 'Tabla ' + cat })]; }) });
+  }
+  if (kind === 'parejas') {
+    var ps = pairsOf(t.id, cat).slice().sort(function (a, b) { return pairElo(b) - pairElo(a); });
+    return Object.assign(base, { kicker: 'Parejas inscritas · ' + ps.length + (t.cupo > 0 ? '/' + t.cupo : ''), pages: chunk(ps, 24).map(function (ch, pi) { return [{ type: 'table', title: 'Parejas ' + cat, cols: ['#', 'Pareja', 'ELO'], hiLast: true, cw: 100, rows: ch.map(function (p, i) { return { v: [String(pi * 24 + i + 1), pName(p.j1, true) + ' / ' + pName(p.j2, true), String(pairElo(p))] }; }) }]; }) });
+  }
+  if (kind === 'jornada') {
+    var j = n || curJornada(t), ms = matchesOf(t.id, cat, 'liga').filter(function (m) { return m.jornada === j; }).sort(function (a, b) { return String(a.hora || '').localeCompare(String(b.hora || '')) || a.cancha - b.cancha; });
+    return Object.assign(base, { kicker: 'Jornada ' + j + (ms[0] && ms[0].fecha ? ' · ' + fdate(ms[0].fecha) : ''), pages: chunk(ms.map(imgMatch), 12).map(function (l) { return [{ type: 'matches', title: 'Partidos ' + cat, list: l }]; }) });
+  }
+  if (kind === 'turno') {
+    var pend = matchesOf(t.id, cat).filter(function (m) { return m.pa && m.pb && m.estado !== 'bye' && (n ? true : m.estado === 'pend'); }), tn = n || Math.min.apply(null, pend.map(function (m) { return m.turno || 999; }));
+    var tm2 = pend.filter(function (m) { return (m.turno || 999) === tn; }).sort(function (a, b) { return a.cancha - b.cancha; });
+    return Object.assign(base, { kicker: (n ? 'Turno ' + tn : 'Siguientes partidos') + (tm2[0] && tm2[0].hora ? ' · ' + tm2[0].hora : ''), pages: [[{ type: 'matches', title: cat + ' · Turno ' + tn, list: tm2.map(imgMatch) }]] });
+  }
+  if (kind === 'cuadro') {
+    var R = {}; matchesOf(t.id, cat, 'elim').forEach(function (m) { (R[m.ronda] = R[m.ronda] || []).push(m); });
+    var ks = Object.keys(R).map(Number).sort(function (a, b) { return a - b; });
+    var rounds = ks.map(function (k) { return { name: R[k][0].label, list: R[k].filter(function (m) { return m.estado !== 'bye'; }).sort(function (a, b) { return a.pos - b.pos; }).map(imgMatch) }; }).filter(function (r) { return r.list.length; });
+    var pages = [], cur = [], cnt = 0;
+    rounds.forEach(function (r) { if (cnt + r.list.length > 14 && cur.length) { pages.push(cur); cur = []; cnt = 0; } cur.push(r); cnt += r.list.length; });
+    if (cur.length) pages.push(cur);
+    var fm = R[ks[ks.length - 1]] && R[ks[ks.length - 1]][0], champ = fm && fm.estado === 'fin' ? imgPairsName(X.P[+fm.ga > +fm.gb ? fm.pa : fm.pb]) : null;
+    return Object.assign(base, { kicker: champ ? '🏆 Campeones: ' + champ : (isLiga(t) ? 'Liguilla' : 'Eliminatoria'), pages: pages.map(function (p) { return [{ type: 'bracket', title: (isLiga(t) ? 'Liguilla ' : 'Eliminatoria ') + cat, rounds: p }]; }) });
+  }
+  // ranking del torneo
+  var rows = torneoRanking(t).sort(function (a, b) { return X.elo[b.id] - X.elo[a.id]; }).slice(0, 20);
+  return Object.assign(base, { sub: (sd ? sd.nombre + ' · ' : '') + fdate(t.fecha), kicker: isLiga(t) ? 'Ranking de la liga' : 'Ranking del torneo', pages: [[{ type: 'table', title: 'Top ' + rows.length + ' · ELO', cols: ['#', 'Jugador', 'G/PJ', 'ELO'], medals: true, hiLast: true, cw: 110, rows: rows.map(function (x, i) { return { q: i < 3, v: [String(i + 1), pName(x.id, true), x.pg + '/' + x.pj, String(X.elo[x.id])] }; }) }]] });
+}
+function imgRankingSpec() {
+  var rows = X.rank.slice(0, 20);
+  return { file: 'ranking', kicker: 'Ranking general Tepic', title: 'Ranking Diamante', sub: 'Retas, torneos y ligas · ' + fdate(today()), sponsors: S.d.patrocinadores.filter(function (p) { return p.casa; }).concat((X.cfg.eliteRanking || []).map(function (i) { return X.SP[i]; }).filter(function (p) { return p && !p.casa; })), pages: [[{ type: 'table', title: 'Top 20', cols: ['#', 'Jugador', 'FZA', 'ELO'], medals: true, hiLast: true, cw: 110, rows: rows.map(function (j, i) { return { q: i < 3, v: [String(i + 1), j.nombre, j.fuerza || '', String(X.elo[j.id])] }; }) }]] };
+}
+
+function imgRetaRoundSpec(r, n) {
+  var sd = X.SD[r.sedeId], rm = (X.MR[r.id] || []).filter(function (m) { return m.ronda === n; }).sort(function (a, b) { return a.cancha - b.cancha; });
+  var rest = restOf(r, rm).map(function (i) { return pName(i, true); });
+  var blocks = [{ type: 'matches', title: 'Ronda ' + n, list: rm.map(function (m) { var x = imgMatch(m); x.hr = ''; if (r.tipo === 'rey') x.c = m.cancha === 1 ? 'REY' : 'C' + m.cancha; return x; }) }];
+  if (rest.length) blocks.push({ type: 'names', title: 'Descansan', list: rest });
+  return { file: 'reta-ronda-' + n, kicker: 'Ronda ' + n + (rm.every(function (m) { return m.estado === 'fin'; }) ? ' · resultados' : ' · en juego'), title: (r.tipo === 'rey' ? 'Rey de la cancha' : 'Royal') + ' · ' + (sd ? sd.nombre : ''), sub: fdate(r.fecha) + ' · ' + (r.hora || ''), pages: [blocks], sponsors: globalSponsors() };
+}
+function imgRetaRankSpec(r) { var sp = imgRetaSpec(r); var last = sp.pages[sp.pages.length - 1]; sp.pages = [last]; sp.kicker = 'Ranking de la reta'; sp.file = 'reta-ranking'; return sp; }
+function imgSedeRankSpec(sid) {
+  var sd = X.SD[sid], ms = S.d.partidos.filter(function (m) { return m.estado === 'fin' && matchSede(m) === sid; }), loc = eloRun(ms, false);
+  var rows = S.d.jugadores.filter(function (j) { return loc.ST[j.id].pj > 0; }).sort(function (a, b) { return loc.E[b.id] - loc.E[a.id]; }).slice(0, 20);
+  return { file: 'ranking-sede', kicker: 'Ranking de la sede', title: sd.nombre, sub: ms.length + ' partidos · ' + fdate(today()), sponsors: globalSponsors(), pages: [[{ type: 'table', title: 'Top ' + rows.length, cols: ['#', 'Jugador', 'G/PJ', 'ELO'], medals: true, hiLast: true, cw: 110, rows: rows.map(function (j, i) { var st = loc.ST[j.id]; return { q: i < 3, v: [String(i + 1), j.nombre, st.pg + '/' + st.pj, String(loc.E[j.id])] }; }) }]] };
+}
+function shareBar(attrs, label) { return '<button class="btn sm blk" style="margin:2px 0 12px;background:rgba(37,211,102,.1);border-color:rgba(37,211,102,.45)" data-a="img" ' + attrs + '>🖼 ' + label + '</button>'; }
+function shareMini(attrs) { return '<button class="btn sm" style="height:28px;font-size:11.5px;padding:0 10px" data-a="img" ' + attrs + '>🖼</button>'; }
 
 // =================== MODAL DE MARCADOR ===================
 var SC = null;
@@ -1873,7 +4489,8 @@ function scoreModal(id) {
   var rule = r ? (r.regla === 'fijo' ? 'Se juegan ' + r.juegos + ' juegos' : 'Gana quien llegue a ' + r.juegos) : (t ? t.formato || '' : '');
   modal('<h3>Marcador</h3><div class="xs mut" style="margin:-6px 0 14px">' + (t ? h(m.cat) + ' · ' + (m.fase === 'grupo' ? 'Grupo ' + h(m.grupo) : m.fase === 'liga' ? 'Jornada ' + m.jornada : h(m.label)) + ' · ' : 'Ronda ' + m.ronda + ' · ') + h(rule) + '</div>' +
     scRow('a', A) + '<div class="xs dim" style="text-align:center;margin:6px 0">VS</div>' + scRow('b', B) +
-    (t ? '<div class="fld" style="margin-top:14px"><label>Cancha</label><select class="inp" id="scC">' + Array.from({ length: C }, function (_, i) { return '<option value="' + (i + 1) + '"' + (+SC.cancha === i + 1 ? ' selected' : '') + '>Cancha ' + (i + 1) + '</option>'; }).join('') + '</select></div>' : '') +
+    (t ? '<div class="grid2" style="margin-top:14px">' + (m.fase === 'liga' ? '<div class="fld"><label>Fecha</label><input class="inp" type="date" id="scF" value="' + h(m.fecha || '') + '"></div>' : '') + '<div class="fld"><label>Hora</label><input class="inp" type="time" id="scH" value="' + h(m.hora || '') + '"></div></div>' : '') +
+    (t ? '<div class="fld"><label>Cancha</label><select class="inp" id="scC">' + Array.from({ length: C }, function (_, i) { return '<option value="' + (i + 1) + '"' + (+SC.cancha === i + 1 ? ' selected' : '') + '>Cancha ' + (i + 1) + '</option>'; }).join('') + '</select></div>' : '') +
     '<button class="btn blk" style="margin-top:12px;background:rgba(37,211,102,.12);border-color:rgba(37,211,102,.45)" data-a="waMatch" data-id="' + m.id + '">Avisar por WhatsApp</button>' +
     '<div class="acts">' + (m.estado === 'fin' ? '<button class="btn bad" data-a="scClear">Borrar</button>' : '<button class="btn ghost" data-a="close">Cancelar</button>') + '<button class="btn pri" data-a="scSave">Guardar</button></div>');
 }
@@ -2128,6 +4745,8 @@ A.scSave = function () {
   if (r) { var N = +r.juegos; if (r.regla === 'fijo') bad = ga + gb !== N; else bad = Math.max(ga, gb) !== N || Math.min(ga, gb) >= N; }
   (bad ? ask('El marcador no cumple la regla de la reta. ¿Guardar de todos modos?', 'Guardar') : Promise.resolve(true)).then(function (ok) {
     if (!ok) return;
+    if ($('#scH') && $('#scH').value) m = Object.assign({}, m, { hora: $('#scH').value });
+    if ($('#scF') && $('#scF').value) m = Object.assign({}, m, { fecha: $('#scF').value });
     saveResult(m, ga, gb, cc).then(function () { closeModal(); render(); }).catch(function (e) { toast(e.message, true); });
   });
 };
@@ -2185,10 +4804,73 @@ A.install = function () {
 A.installX = function () { lsSet('cp_inst_x', '1'); render(); };
 // whatsapp
 A.waMatch = function (el) { var m = X.M[el.dataset.id]; var c = mCtx(m); waModal(c.nombre + ' · ' + c.fase + (m.cancha ? ' · Cancha ' + m.cancha : ''), [m]); };
-A.waTurno = function (el) { var t = X.T[el.dataset.t], n = +el.dataset.n; var ms = matchesOf(t.id, el.dataset.c).filter(function (m) { return m.turno === n && m.estado !== 'bye'; }); waModal(el.dataset.c + ' · Turno ' + n + (ms[0] && ms[0].hora ? ' · ' + ms[0].hora : ''), ms); };
-A.waJornada = function (el) { var t = X.T[el.dataset.t], n = +el.dataset.n; var ms = matchesOf(t.id, el.dataset.c, 'liga').filter(function (m) { return m.jornada === n; }).sort(function (a, b) { return (a.turno || 0) - (b.turno || 0); }); waModal(el.dataset.c + ' · Jornada ' + n + (ms[0] && ms[0].fecha ? ' · ' + fdate(ms[0].fecha) : ''), ms); };
-A.waRonda = function (el) { var r = X.R[el.dataset.r], n = +el.dataset.n; var ms = (X.MR[r.id] || []).filter(function (m) { return m.ronda === n; }).sort(function (a, b) { return a.cancha - b.cancha; }); waModal('Ronda ' + n, ms); };
+A.waTurno = function (el) { var t = X.T[el.dataset.t], n = +el.dataset.n; var ms = matchesOf(t.id, el.dataset.c).filter(function (m) { return m.turno === n && m.estado !== 'bye'; }); waModal(el.dataset.c + ' · Turno ' + n + (ms[0] && ms[0].hora ? ' · ' + ms[0].hora : ''), ms, 'data-k="t" data-t="' + t.id + '" data-c="' + h(el.dataset.c) + '" data-x="turno" data-n="' + n + '"'); };
+A.waJornada = function (el) { var t = X.T[el.dataset.t], n = +el.dataset.n; var ms = matchesOf(t.id, el.dataset.c, 'liga').filter(function (m) { return m.jornada === n; }).sort(function (a, b) { return (a.turno || 0) - (b.turno || 0); }); waModal(el.dataset.c + ' · Jornada ' + n + (ms[0] && ms[0].fecha ? ' · ' + fdate(ms[0].fecha) : ''), ms, 'data-k="t" data-t="' + t.id + '" data-c="' + h(el.dataset.c) + '" data-x="jornada" data-n="' + n + '"'); };
+A.waRonda = function (el) { var r = X.R[el.dataset.r], n = +el.dataset.n; var ms = (X.MR[r.id] || []).filter(function (m) { return m.ronda === n; }).sort(function (a, b) { return a.cancha - b.cancha; }); waModal('Ronda ' + n, ms, 'data-k="retaR" data-r="' + r.id + '" data-n="' + n + '"'); };
 A.waCopy = function () { try { navigator.clipboard.writeText(WA_TEXT).then(function () { toast('Mensaje copiado'); }, function () { toast('No se pudo copiar', true); }); } catch (e) { toast('No se pudo copiar', true); } };
+// imágenes
+A.img = function (el) {
+  var d = el.dataset, k = d.k;
+  closeModalSilent();
+  if (k === 't') { var t = X.T[d.t]; return shareImages(imgTorneoSpecs(t, d.x, d.x === 'ranking' ? null : d.c, d.n ? +d.n : null), t.nombre); }
+  if (k === 'retaR') return shareImages(imgRetaRoundSpec(X.R[d.r], +d.n), 'Reta de pádel');
+  if (k === 'retaK') return shareImages(imgRetaRankSpec(X.R[d.r]), 'Ranking de la reta');
+  if (k === 'sede') return shareImages(imgSedeRankSpec(d.s), 'Ranking de la sede');
+};
+A.imgReta = function (el) { shareImages(imgRetaSpec(X.R[el.dataset.id]), 'Reta de pádel'); };
+A.imgRank = function () { shareImages(imgRankingSpec(), 'Ranking Diamante de Tepic'); };
+A.imgMenu = function (el) {
+  var t = X.T[el.dataset.id], cats = t.cats || [], cat = el.dataset.c || (S.cat[t.id] && cats.indexOf(S.cat[t.id]) >= 0 ? S.cat[t.id] : cats[0]);
+  if (!cat) return toast('Agrega categorías primero.', true);
+  var cs = catStatus(t, cat), em = matchesOf(t.id, cat, 'elim').length, pend = matchesOf(t.id, cat).some(function (m) { return m.estado === 'pend' && m.pa && m.pb; });
+  var opts = isLiga(t) ? [['tabla', 'Tabla general', cs.gs.length], ['jornada', 'Partidos de la jornada actual', cs.gs.length], ['cuadro', 'Liguilla', em], ['ranking', 'Ranking de la liga', 1]]
+    : [['grupos', 'Cómo quedaron los grupos', cs.gs.length], ['turno', 'Siguientes partidos (canchas y hora)', pend], ['cuadro', 'Eliminatoria / cuadro', em], ['ranking', 'Ranking del torneo', 1]];
+  modal('<h3>Imagen para WhatsApp</h3><div class="xs mut" style="margin:-6px 0 12px">' + h(t.nombre) + '</div>' +
+    (cats.length > 1 ? '<div class="chips">' + cats.map(function (c) { return '<button class="chip ' + (c === cat ? 'on' : '') + '" data-a="imgMenu" data-id="' + t.id + '" data-c="' + h(c) + '">' + h(c) + '</button>'; }).join('') + '</div>' : '') +
+    '<div class="card" style="padding:4px 14px">' + opts.map(function (o) { return '<div class="li ' + (o[2] ? 'tap' : '') + '" ' + (o[2] ? 'data-a="imgGo" data-id="' + t.id + '" data-c="' + h(cat) + '" data-k="' + o[0] + '"' : 'style="opacity:.4"') + '><span class="grow b">' + o[1] + '</span><span class="dim">' + (o[2] ? '›' : 'aún no') + '</span></div>'; }).join('') + '</div>' +
+    '<div class="acts"><button class="btn ghost" data-a="close">Cerrar</button></div>');
+};
+A.imgGo = function (el) { var t = X.T[el.dataset.id]; closeModalSilent(); shareImages(imgTorneoSpecs(t, el.dataset.k, el.dataset.k === 'ranking' ? null : el.dataset.c), t.nombre); };
+A.shImg = function () {
+  if (!SHARE) return;
+  try {
+    var files = SHARE.imgs.map(function (x) { return new File([x.blob], x.name, { type: 'image/png' }); });
+    // solo la imagen: si se manda texto junto, WhatsApp en Android a veces manda solo el texto
+    if (navigator.canShare && navigator.canShare({ files: files })) { navigator.share({ files: files }).catch(function (e) { if (e && e.name !== 'AbortError' && files.length > 1) navigator.share({ files: [files[0]] }).catch(function () {}); }); return; }
+  } catch (e) {}
+  toast('Tu navegador no permite compartir directo. Usa Descargar o deja presionada la imagen.', true);
+};
+A.dlImg = function () {
+  if (!SHARE) return;
+  SHARE.imgs.forEach(function (x) { var a = document.createElement('a'); a.href = x.url; a.download = x.name; document.body.appendChild(a); a.click(); a.remove(); });
+};
+// editar fecha / horarios a mano
+A.schedEdit = function (el) {
+  var d = el.dataset, t = X.T[d.t], n = +d.n, x = d.x;
+  var ms = matchesOf(t.id, d.c, x === 'jornada' ? 'liga' : null).filter(function (m) { return (x === 'jornada' ? m.jornada === n : m.turno === n) && m.estado !== 'bye' && m.pa && m.pb; }).sort(function (a, b) { return (a.turno || 0) - (b.turno || 0) || (a.cancha || 0) - (b.cancha || 0); });
+  if (!ms.length) return toast('No hay partidos.', true);
+  var C = Math.max(1, +t.canchas || 1);
+  SCHED = ms.map(function (m) { return m.id; });
+  modal('<h3>' + (x === 'jornada' ? 'Fecha y horarios · Jornada ' + n : 'Horarios · Turno ' + n) + '</h3><div class="xs mut" style="margin:-6px 0 12px">' + h(d.c) + ' · corrige a mano y guarda; la imagen y la tele se actualizan solas</div>' +
+    (x === 'jornada' ? '<div class="fld"><label>Fecha de la jornada (todos sus partidos)</label><input class="inp" type="date" id="seF" value="' + h(ms[0].fecha || '') + '"></div>' : '') +
+    '<div class="fld"><label>Poner la misma hora a todos (opcional)</label><div class="row" style="gap:8px"><input class="inp" type="time" id="seAll"><button class="btn sm" data-a="schedAll">Aplicar</button></div></div>' +
+    '<div class="card" style="padding:4px 12px">' + ms.map(function (m, i) {
+      return '<div class="li" style="flex-wrap:wrap"><div class="grow" style="min-width:0;flex-basis:100%"><div class="sm b ell">' + pairName(X.P[m.pa]) + '</div><div class="sm b ell">' + pairName(X.P[m.pb]) + '</div></div>' +
+        '<input class="inp" type="time" style="height:40px;flex:1" data-seh="' + i + '" value="' + h(m.hora || '') + '"><select class="inp" style="height:40px;flex:1" data-sec="' + i + '">' + Array.from({ length: C }, function (_, k) { return '<option value="' + (k + 1) + '"' + (+m.cancha === k + 1 ? ' selected' : '') + '>Cancha ' + (k + 1) + '</option>'; }).join('') + '</select></div>';
+    }).join('') + '</div>' +
+    '<div class="acts"><button class="btn ghost" data-a="close">Cancelar</button><button class="btn pri" data-a="schedSave">Guardar</button></div>');
+};
+var SCHED = [];
+A.schedAll = function () { var v = $('#seAll').value; if (!v) return; $$('[data-seh]').forEach(function (i) { i.value = v; }); };
+A.schedSave = function () {
+  var f = $('#seF') ? $('#seF').value : null, out = [];
+  SCHED.forEach(function (id, i) {
+    var m = Object.assign({}, X.M[id]), hh = $('[data-seh="' + i + '"]').value, cc = +$('[data-sec="' + i + '"]').value;
+    if (hh) m.hora = hh; if (cc) m.cancha = cc; if (f) m.fecha = f;
+    out.push(m);
+  });
+  save('partidos', out, 'Horarios guardados').then(function () { closeModal(); render(); }).catch(function () {});
+};
 // tv
 A.tvOpen = function (el) { tvOpen(el.dataset.id); };
 A.tvClose = function () { tvClose(); };
