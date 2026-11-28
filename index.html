@@ -3782,7 +3782,7 @@ function matchCard(m, courtLbl) {
   var sa = fin ? (ga > gb ? ' w' : ga < gb ? ' l' : '') : '', sb = fin ? (gb > ga ? ' w' : gb < ga ? ' l' : '') : '';
   var lbl = courtLbl || (m.cancha || '–');
   return '<div class="mt' + (fin ? ' fin' : '') + '" data-a="score" data-id="' + m.id + '"><div class="ct"><b' + (String(lbl).length > 2 ? ' style="font-size:13px"' : '') + '>' + h(lbl) + '</b><span>' + (courtLbl ? 'CANCHA' : 'CANCHA') + '</span></div><div class="grow col" style="justify-content:center">' +
-    (m.torneoId ? '<div class="xs dim">' + (m.fase === 'grupo' ? h(m.cat) + ' · Grupo ' + h(m.grupo) : m.fase === 'liga' ? h(m.cat) + ' · Jornada ' + m.jornada : h(m.cat) + ' · ' + h(m.label || '')) + (m.hora ? ' · ' + h(m.hora) : '') + (!fin && m.repro ? ' · <span style="color:var(--gold)">⏸ ' + h(reproTxt(m)) + '</span>' : '') + (!fin && m.torneoId && canT(X.T[m.torneoId]) && pairTimeIssue(m) ? ' · <span style="color:var(--gold)">⚠ fuera de su horario</span>' : '') + '</div>' : '') +
+    (m.torneoId ? '<div class="xs dim">' + (m.fase === 'grupo' ? h(m.cat) + ' · Grupo ' + h(m.grupo) : m.fase === 'liga' ? h(m.cat) + ' · Jornada ' + m.jornada : h(m.cat) + ' · ' + h(m.label || '')) + (m.fecha && m.fase !== 'liga' && X.T[m.torneoId] && m.fecha !== X.T[m.torneoId].fecha ? ' · ' + h(fdate(m.fecha)) : '') + (m.hora ? ' · ' + h(m.hora) : '') + (!fin && m.repro ? ' · <span style="color:var(--gold)">⏸ ' + h(reproTxt(m)) + '</span>' : '') + (!fin && m.torneoId && canT(X.T[m.torneoId]) && pairTimeIssue(m) ? ' · <span style="color:var(--gold)">⚠ fuera de su horario</span>' : '') + '</div>' : '') +
     '<div class="sd' + sa + '"><span class="n">' + A + '</span><span class="s">' + (fin ? scoreHTML(m, 'a') : '') + '</span></div><div class="sd' + sb + '"><span class="n">' + B + '</span><span class="s">' + (fin ? scoreHTML(m, 'b') : '') + '</span></div></div></div>';
 }
 
@@ -3875,7 +3875,8 @@ function groupCard(t, cat, g, cs) {
 TSUB.partidos = function (t, cat, can) {
   var f = S.filt['tp' + t.id] || 'pend';
   var ms = matchesOf(t.id, cat).filter(function (m) { return m.pa && m.pb && m.estado !== 'bye' && (f === 'all' || (f === 'pend' ? m.estado !== 'fin' : m.estado === 'fin')); });
-  ms.sort(function (a, b) { return (a.turno || 999) - (b.turno || 999) || (a.cancha || 0) - (b.cancha || 0); });
+  var fk = function (m) { return (m.fecha || t.fecha || '') + ' ' + (m.hora || '99'); };
+  ms.sort(function (a, b) { return fk(a).localeCompare(fk(b)) || (a.turno || 999) - (b.turno || 999) || (a.cancha || 0) - (b.cancha || 0); });
   var html = '<div class="chips"><button class="chip ' + (f === 'pend' ? 'on' : '') + '" data-a="filt" data-k="tp' + t.id + '" data-v="pend">Por jugar</button><button class="chip ' + (f === 'fin' ? 'on' : '') + '" data-a="filt" data-k="tp' + t.id + '" data-v="fin">Jugados</button><button class="chip ' + (f === 'all' ? 'on' : '') + '" data-a="filt" data-k="tp' + t.id + '" data-v="all">Todos</button></div>';
   if (!ms.length) return html + empty('court', f === 'pend' ? 'No hay partidos pendientes en ' + h(cat) + '.' : 'Sin partidos.');
   html += shareBar('data-k="t" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="turno"', 'Imagen de los siguientes partidos');
@@ -3883,7 +3884,7 @@ TSUB.partidos = function (t, cat, can) {
   var lastT = null, max = 160, shown = 0;
   ms.forEach(function (m) {
     if (shown >= max) return;
-    if (m.turno !== lastT) { lastT = m.turno; html += '<div class="tl"><b>Turno ' + (m.turno || '–') + '</b>' + (m.hora ? '<span>' + h(m.hora) + '</span>' : '') + '<span class="grow"></span>' + shareMini('data-k="t" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="turno" data-n="' + (m.turno || '') + '"') + (can ? '<button class="btn sm" style="height:28px;font-size:11.5px" data-a="schedEdit" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="turno" data-n="' + (m.turno || '') + '">✏️</button><button class="btn sm" style="height:28px;font-size:11.5px" data-a="waTurno" data-t="' + t.id + '" data-c="' + h(cat) + '" data-n="' + (m.turno || '') + '">📲 Avisar</button>' : '') + '</div>'; }
+    if (m.turno !== lastT) { lastT = m.turno; html += '<div class="tl"><b>Turno ' + (m.turno || '–') + '</b>' + (m.fecha && m.fecha !== t.fecha ? '<span style="color:var(--gold)">' + h(fdate(m.fecha)) + '</span>' : '') + (m.hora ? '<span>' + h(m.hora) + '</span>' : '') + '<span class="grow"></span>' + shareMini('data-k="t" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="turno" data-n="' + (m.turno || '') + '"') + (can ? '<button class="btn sm" style="height:28px;font-size:11.5px" data-a="schedEdit" data-t="' + t.id + '" data-c="' + h(cat) + '" data-x="turno" data-n="' + (m.turno || '') + '">✏️</button><button class="btn sm" style="height:28px;font-size:11.5px" data-a="waTurno" data-t="' + t.id + '" data-c="' + h(cat) + '" data-n="' + (m.turno || '') + '">📲 Avisar</button>' : '') + '</div>'; }
     html += matchCard(m); shown++;
   });
   if (ms.length > max) html += '<div class="xs mut" style="margin-top:8px">Mostrando ' + max + ' de ' + ms.length + '. Filtra por "Por jugar" para ver los siguientes.</div>';
@@ -5657,10 +5658,12 @@ function sbResHTML(r) {
 function sbCommit(t, upd) {
   // re-numera turnos por fecha y hora para que la lista quede en orden
   var all = matchesOf(t.id).filter(function (m) { return m.fase !== 'elim'; }).map(function (m) { return upd[m.id] || m; });
-  var keys = {}; all.forEach(function (m) { if (m.hora) keys[(m.fecha || '') + ' ' + m.hora] = 1; });
+  var fk = function (m) { return (m.fecha || t.fecha || '') + ' ' + m.hora; };
+  var keys = {}; all.forEach(function (m) { if (m.hora) keys[fk(m)] = 1; });
   var order = Object.keys(keys).sort();
-  all.forEach(function (m) { if (!m.hora || m.estado === 'fin') return; var n = order.indexOf((m.fecha || '') + ' ' + m.hora) + 1; if (n && n !== m.turno) { var c = upd[m.id] || Object.assign({}, m); c.turno = n; upd[m.id] = c; } });
+  all.forEach(function (m) { if (!m.hora || m.estado === 'fin') return; var n = order.indexOf(fk(m)) + 1; if (n && n !== m.turno) { var c = upd[m.id] || Object.assign({}, m); c.turno = n; upd[m.id] = c; } });
   var out = Object.keys(upd).map(function (k) { return upd[k]; });
+  if (!out.length) { toast('Sin cambios'); return Promise.resolve(); }
   return save('partidos', out, out.length + ' partidos actualizados');
 }
 A.sbGo = function () {
@@ -5691,7 +5694,7 @@ A.sbGo = function () {
   });
   var r = sbCompute(t, items, bad);
   $('#sbRes').innerHTML = sbResHTML(r);
-  if (!r.n) return toast(bad.length ? 'Revisa los renglones marcados' : 'Sin cambios', !!bad.length);
+  if (!r.n && bad.length) return toast('Revisa los renglones marcados', true);
   if ((bad.length || r.clash.length) && !SB.confirm) { SB.confirm = 1; $('[data-a=sbGo]').textContent = 'Aplicar de todos modos'; return; }
   sbCommit(t, r.upd).then(function () { SB = null; closeModal(); render(); }).catch(function () {});
 };
