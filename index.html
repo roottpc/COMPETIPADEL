@@ -5338,9 +5338,14 @@ function fmtFieldsHTML(o, key, isReta) {
   var seg = function (k, opts) { return '<div class="seg">' + opts.map(function (x) { return '<button class="' + (String(f[k]) === String(x[0]) ? 'on' : '') + '" data-a="fmtSet" data-o="' + key + '" data-k="' + k + '" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>'; };
   var html = '<div class="fld"><label>Sets por partido</label>' + seg('sets', [[0, isReta ? 'Juegos' : 'Sin sets'], [1, '1 set'], [3, 'Mejor de 3'], [5, 'Mejor de 5']]) + '</div>';
   if (f.sets) {
-    html += '<div class="grid2"><div class="fld"><label>Juegos por set</label>' + seg('jps', [[4, '4'], [6, '6'], [8, '8']]) + '</div>' +
-      '<div class="fld"><label>Empate ' + f.jps + '-' + f.jps + '</label>' + seg('tb', [[true, 'M. súbita'], [false, 'Ventaja']]) + '</div></div>' +
-      (f.tb ? '<div class="fld"><label>Muerte súbita a</label>' + seg('tbp', [[7, '7 puntos'], [10, '10 puntos']]) + '</div>' : '') +
+    var J = f.jps, num = function (k, v, mn, mx) { return '<input class="inp" type="number" inputmode="numeric" min="' + mn + '" max="' + mx + '" data-fmtn="' + k + '" data-o="' + key + '" value="' + v + '" style="font-size:20px;font-weight:700;text-align:center">'; };
+    html += '<div class="grid2"><div class="fld"><label>Juegos por set</label>' + num('jps', J, 2, 15) + '</div>' +
+      (f.tb ? '<div class="fld"><label>Muerte súbita a (puntos)</label>' + num('tbp', f.tbp, 3, 21) + '</div>' : '<div></div>') + '</div>' +
+      '<div class="card" style="padding:10px 12px;margin:-4px 0 12px;font-size:13px;line-height:1.55">' +
+        '• Gana el set quien llegue a <b>' + J + '</b> con 2 de diferencia.<br>' +
+        '• Si empatan <b>' + (J - 1) + '-' + (J - 1) + '</b> (uno menos), el set sube a <b>' + (J + 1) + '</b>.<br>' +
+        '• Si luego llegan a <b>' + J + '-' + J + '</b>: ' + (f.tb ? '<b>muerte súbita a ' + f.tbp + ' puntos</b> (dif. 2) y el set queda ' + (J + 1) + '-' + J + '.' : '<b>se sigue por ventaja</b> hasta sacar 2 juegos de diferencia.') + '</div>' +
+      '<div class="fld"><label>Si llegan a ' + J + '-' + J + '</label>' + seg('tb', [[true, 'Muerte súbita'], [false, 'Ventaja (2 juegos)']]) + '</div>' +
       '<div class="fld"><label>Regla del game (40-40)</label>' + seg('pt', [['', 'Ventaja'], ['oro', 'Punto de oro'], ['star', 'Star point']]) + '</div>' +
       (f.sets > 1 ? '<div class="fld"><label>Si empatan en sets (' + Math.floor(f.sets / 2) + '-' + Math.floor(f.sets / 2) + ')</label>' + seg('st', [[true, 'Súper tie a 10'], [false, 'Set completo']]) + '</div>' : '') +
       '<div class="xs" style="color:var(--neon);margin:-4px 0 12px">' + h(fmtTxt(o)) + '</div>';
@@ -5849,6 +5854,16 @@ A.bracketDel = function (el) {
     if (ok) del('partidos', em.map(function (m) { return m.id; }), 'Cuadro borrado').then(render);
   });
 };
+
+document.addEventListener('change', function (ev) {
+  var t = ev.target; if (!t.dataset || !t.dataset.fmtn) return;
+  var key = t.dataset.o, o = key === 'rf' ? RF : key === 'tfpo' ? (TF.po = TF.po || {}) : TF, k = t.dataset.fmtn;
+  var v = Math.round(+t.value), mn = +t.min, mx = +t.max;
+  if (!v || v < mn) v = mn; if (v > mx) v = mx;
+  o[k] = v;
+  if (o === TF && k === 'jps' && !TF._durTouched) TF.dur = sugDur(TF);
+  render();
+});
 
 // =================== EVENTOS ===================
 document.addEventListener('click', function (ev) {
