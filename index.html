@@ -307,6 +307,9 @@ tr.out td.nm div{text-decoration:line-through;text-decoration-color:rgba(255,77,
 .tcov span{position:absolute;right:8px;bottom:8px;background:#000a;color:#fff;font-size:11px;padding:3px 8px;border-radius:20px}
 .upl .th .cov{position:absolute;left:4px;bottom:4px;background:var(--neon);color:#001;font-size:9px;font-weight:800;padding:1px 5px;border-radius:6px}
 .setrow input::-webkit-inner-spin-button,.setrow input::-webkit-outer-spin-button,.tierow input::-webkit-inner-spin-button,.tierow input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}.setrow input,.tierow input{-moz-appearance:textfield}
+#pinov{position:fixed;inset:0;z-index:9999;background:rgba(1,6,16,.78);backdrop-filter:blur(6px);display:grid;place-items:center;padding:20px}
+#pinov .pinbox{width:100%;max-width:360px;background:linear-gradient(180deg,#0c2149,#061430);border:1px solid rgba(0,229,255,.45);border-radius:22px;padding:22px 20px;text-align:center;box-shadow:0 0 40px rgba(0,229,255,.25)}
+#pinov .pin{text-align:center;font-size:28px;letter-spacing:.4em}
 </style></head><body><script>//---------------------------------------------------------------------
 //
 // QR Code Generator for JavaScript
@@ -2824,6 +2827,14 @@ window.makeFbBackend = function (A, cfg) {
     if (ex.uid) ops.push({ op: 'delete', col: 'users', id: ex.uid });
     return A.commit(ops, true).then(function () { return true; });
   }
+  function verifyPin(_, pin) {
+    if (!me) fail('Tu sesión expiró. Vuelve a entrar.');
+    if (!okPin(pin)) fail('El PIN debe tener 6 dígitos.');
+    return A.verify(String(pin)).then(function () { return true; }, function (e) {
+      if (/wrong-password|invalid-credential|invalid-login/.test((e && e.code) || '')) fail('PIN incorrecto.');
+      throw e;
+    });
+  }
   function logout() { return A.signOut().then(function () { me = null; stopPriv(); }); }
 
   // ---------- escritura ----------
@@ -2951,7 +2962,7 @@ window.makeFbBackend = function (A, cfg) {
 
   var api = {
     bootstrap: bootstrap, checkPhone: checkPhone, login: login, setPin: setPin, linkPlayer: linkPlayer, register: register,
-    changePin: changePin, resetPin: resetPin, save: save, remove: remove, upload: upload
+    changePin: changePin, verifyPin: verifyPin, resetPin: resetPin, save: save, remove: remove, upload: upload
   };
   return {
     mode: 'firebase',
@@ -3054,13 +3065,13 @@ function toast(m, err) {
 }
 function save(table, objs, msg) {
   objs = Array.isArray(objs) ? objs : [objs];
-  return run(api('save', S.token, table, objs), msg).then(function (r) {
+  return pinGate().then(function () { return run(api('save', S.token, table, objs), msg); }).then(function (r) {
     merge(table, r.items); S.ver = r.ver; reindex(); return r.items;
   });
 }
 function del(table, ids, msg) {
   ids = Array.isArray(ids) ? ids : [ids];
-  return run(api('remove', S.token, table, ids), msg).then(function (r) {
+  return pinGate().then(function () { return run(api('remove', S.token, table, ids), msg); }).then(function (r) {
     var set = {}; ids.forEach(function (i) { set[i] = 1; });
     S.d[table] = S.d[table].filter(function (o) { return !set[o.id]; });
     if (table === 'torneos') { S.d.parejas = S.d.parejas.filter(function (p) { return !set[p.torneoId]; }); S.d.partidos = S.d.partidos.filter(function (m) { return !set[m.torneoId]; }); }
@@ -3144,7 +3155,8 @@ function rol() { return S.me ? S.me.rol : 'anon'; }
 function isAdmin() { return rol() === 'admin'; }
 function isOrg() { return rol() === 'admin' || rol() === 'organizador'; }
 function myId() { return S.me ? S.me.user.id : null; }
-function canT(t) { return t && (isAdmin() || (isOrg() && (t.creador === myId() || (t.staff || []).indexOf(myId()) >= 0))); }
+function canT(t) { return !!t && !!S.me && S.me.kind === 'j' && (isAdmin() || (isOrg() && t.creador === myId()) || (t.staff || []).indexOf(myId()) >= 0); }
+function ownT(t) { return !!t && (isAdmin() || (isOrg() && t.creador === myId())); }
 function canSede(sd) { return !!sd && (isAdmin() || !!sd.mine); }
 function canR(r) { return r && S.me && S.me.kind === 'j' && (isOrg() || r.creador === myId() || (r.jugadores || []).indexOf(myId()) >= 0); }
 
@@ -3686,6 +3698,7 @@ VIEWS.inicio = function () {
   html += rAct.length ? '<div class="gridA">' + rAct.slice(0, 4).map(retaCard).join('') + '</div>' : empty('reta', 'No hay retas abiertas. ¡Arma la primera!', '<br><button class="btn pri" data-a="go" data-v="retaForm">Crear reta</button>');
   var top = X.rank.slice(0, 5);
   if (top.length) html += sec('Top Ranking Diamante', '<button class="btn sm ghost" data-a="tab" data-t="ranking">Completo</button>') + '<div class="card">' + top.map(rankRow).join('') + '</div>';
+  html += adCardHTML();
   var sp2 = activeSponsors();
   if (sp2.length) html += sec('Patrocinadores') + '<div class="grid3">' + sp2.slice(0, 6).map(function (p) { return '<div class="card tap" style="text-align:center;padding:12px 8px" data-a="sponsor" data-id="' + p.id + '"><div style="width:54px;height:54px;margin:0 auto 6px">' + spLogo(p, 'ini" style="width:54px;height:54px') + '</div><div class="sm b ell">' + h(p.nombre) + '</div></div>'; }).join('') + '</div>';
   return html;
@@ -3798,7 +3811,7 @@ VIEWS.torneos = function () {
 };
 var TF = null;
 VIEWS.torneoForm = function (rt) {
-  if (!isOrg()) return empty('shield', 'No tienes acceso para crear torneos.');
+  if (rt.id ? !canT(X.T[rt.id]) : !isOrg()) return empty('shield', rt.id ? 'No tienes acceso para editar este torneo.' : 'No tienes acceso para crear torneos.');
   if (!TF || TF._for !== (rt.id || 'new')) {
     var ex = rt.id ? X.T[rt.id] : null;
     TF = ex ? JSON.parse(JSON.stringify(ex)) : { tipo: S.filt.tl === 'liga' ? 'liga' : 'torneo', nombre: '', sedeId: (S.d.sedes[0] || {}).id || '', fecha: today(), hora: S.filt.tl === 'liga' ? '19:00' : '09:00', dur: 70, desc: 5, sets: 3, jps: 6, tb: true, st: true, fotos: [], formato: '', canchas: (S.d.sedes[0] || {}).canchas || 4, cats: [], catCfg: {}, elite: [], estado: 'insc', jornadas: 10, cada: 7, cupo: 0 };
@@ -3824,14 +3837,14 @@ VIEWS.torneoForm = function (rt) {
     '<div class="fld"><label>Patrocinadores ÉLITE del ranking (máx. 2)</label>' + (sp.length ? '<div class="chips" style="flex-wrap:wrap">' + sp.map(function (p) { return '<button class="chip ' + ((TF.elite || []).indexOf(p.id) >= 0 ? 'on' : '') + '" data-a="tfElite" data-v="' + p.id + '">' + h(p.nombre) + '</button>'; }).join('') + '</div>' : '<div class="sm mut">Registra patrocinadores primero.</div>') + '</div>' +
     '<div class="fld"><label>Estado</label><div class="seg">' + [['insc', 'Inscripciones'], ['juego', 'En juego'], ['fin', 'Terminado']].map(function (e) { return '<button class="' + (TF.estado === e[0] ? 'on' : '') + '" data-a="tfSet" data-k="estado" data-v="' + e[0] + '">' + e[1] + '</button>'; }).join('') + '</div></div></div>' +
     '<div class="acts"><button class="btn ghost" data-a="back">Cancelar</button><button class="btn pri" data-a="tfSave">' + (rt.id ? 'Guardar' : 'Crear ' + W) + '</button></div>' +
-    (rt.id && canT(X.T[rt.id]) ? '<button class="btn bad blk" style="margin-top:14px" data-a="tDel" data-id="' + rt.id + '">Borrar ' + W + '</button>' : '');
+    (rt.id && ownT(X.T[rt.id]) ? '<button class="btn bad blk" style="margin-top:14px" data-a="tDel" data-id="' + rt.id + '">Borrar ' + W + '</button>' : '');
 };
 VIEWS.torneo = function (rt) {
   var t = X.T[rt.id]; if (!t) return empty('trophy', 'El torneo no existe.');
   var sd = X.SD[t.sedeId], sub = S.filt['t' + t.id] || 'parejas', can = canT(t);
   var cats = t.cats || []; var cat = S.cat[t.id] && cats.indexOf(S.cat[t.id]) >= 0 ? S.cat[t.id] : cats[0];
   var html = galHTML(t.fotos) + '<div class="tban"><div class="row"><div class="lg">' + (sd && sd.logo ? img(sd.logo) : ICON.trophy.replace('<svg', '<svg width="28"')) + '</div><div class="grow"><h1>' + h(t.nombre) + '</h1><div class="sm mut">' + h(sd ? sd.nombre : '') + ' · ' + fdate(t.fecha) + ' · ' + h(t.hora || '') + '</div><div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">' + (isLiga(t) ? '<span class="bdg y">LIGA · ' + (t.jornadas || 0) + ' jornadas · cada ' + (t.cada || 7) + ' días</span>' : '') + '<span class="bdg y">' + (t.canchas || 0) + ' canchas</span><span class="bdg v" style="height:auto;white-space:normal;line-height:1.35;padding:3px 8px">' + h(fmtTxtT(t)) + '</span><span class="bdg ' + (t.estado === 'fin' ? 'g' : '') + '">' + ({ insc: 'Inscripciones', juego: 'En juego', fin: 'Terminado' }[t.estado] || '') + '</span></div></div></div>' +
-    '<div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn sm pri" data-a="tvOpen" data-id="' + t.id + '">' + ICON.tv + 'Pantalla TV</button><button class="btn sm" data-a="rulesView" data-id="' + t.id + '">📜 Reglas</button><button class="btn sm" data-a="imgMenu" data-id="' + t.id + '">🖼 Imagen</button>' + (can ? '<button class="btn sm" data-a="go" data-v="torneoForm" data-id="' + t.id + '">' + ICON.edit + 'Editar</button>' : '') + '</div></div>';
+    '<div class="row" style="gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn sm pri" data-a="tvOpen" data-id="' + t.id + '">' + ICON.tv + 'Pantalla TV</button><button class="btn sm" data-a="rulesView" data-id="' + t.id + '">📜 Reglas</button><button class="btn sm" data-a="imgMenu" data-id="' + t.id + '">🖼 Imagen</button>' + (can ? '<button class="btn sm" data-a="go" data-v="torneoForm" data-id="' + t.id + '">' + ICON.edit + 'Editar</button>' : '') + (ownT(t) ? '<button class="btn sm" data-a="staffEdit" data-id="' + t.id + '">👥 Asistentes' + ((t.staff || []).length ? ' (' + t.staff.length + ')' : '') + '</button>' : '') + '</div>' + (can && !ownT(t) ? '<div class="xs" style="color:var(--gold);margin-top:8px">Eres asistente de ' + (isLiga(t) ? 'esta liga' : 'este torneo') + '</div>' : '') + '</div>';
   var tsp = torneoSponsors(t).filter(function (p) { return !p.casa; });
   if (tsp.length) html += '<div class="chips" style="margin-top:10px">' + tsp.map(function (p) { return '<button class="chip" style="color:var(--ice);height:40px" data-a="sponsor" data-id="' + p.id + '"><span style="width:26px;height:26px;display:inline-block;border-radius:7px;overflow:hidden">' + spLogo(p, 'ini" style="width:26px;height:26px;border-radius:7px') + '</span>' + h(p.nombre) + '</button>'; }).join('') + '</div>';
   var subs = isLiga(t) ? [['parejas', 'Parejas'], ['tabla', 'Tabla'], ['jornadas', 'Jornadas'], ['cuadro', 'Liguilla'], ['ranking', 'Ranking']] : [['parejas', 'Parejas'], ['grupos', 'Grupos'], ['partidos', 'Partidos'], ['cuadro', 'Eliminatoria'], ['ranking', 'Ranking']];
@@ -4126,6 +4139,7 @@ VIEWS.sponsorForm = function (rt) {
   if (!PF || PF._for !== (rt.id || 'new')) { PF = rt.id && X.SP[rt.id] ? JSON.parse(JSON.stringify(X.SP[rt.id])) : { nombre: '', tel: '', logo: '', web: '', direccion: '', contacto: '', ig: '', promo: '', desc: '', activo: true }; PF._for = rt.id || 'new'; }
   return '<h1>' + (rt.id ? (mine ? 'Mi información' : 'Editar patrocinador') : 'Nuevo patrocinador') + '</h1><div class="card" style="margin-top:12px">' +
     '<div class="fld"><label>Logo</label><div class="upl">' + (PF.logo ? '<div class="th"><img src="' + h(PF.logo) + '"><button data-a="pfRmLogo">✕</button></div>' : '<button class="add" data-a="pfLogo">+</button>') + '</div></div>' +
+    '<div class="fld"><label>Imágenes publicitarias (flyer, promociones)</label><div class="upl">' + (PF.ads || []).map(function (f, i) { return '<div class="th" style="width:96px"><img src="' + h(f) + '"><button data-a="pfRmAd" data-i="' + i + '">✕</button></div>'; }).join('') + ((PF.ads || []).length < 4 ? '<button class="add" data-a="pfAd">+</button>' : '') + '</div><div class="xs dim">Se muestran en el Inicio de la app y en la ficha del patrocinador. Ideal vertical (1080×1350) o banner horizontal.</div></div>' +
     '<div class="fld"><label>Nombre</label><input class="inp" data-pf="nombre" value="' + h(PF.nombre) + '"></div>' +
     (!mine ? '<div class="fld"><label>Celular de acceso (entra con su PIN)</label><input class="inp" type="tel" inputmode="numeric" data-pf="tel" value="' + h(PF.tel || '') + '" placeholder="10 dígitos"></div>' : '') +
     '<div class="fld"><label>Promociones (se ven en la cinta inferior)</label><textarea class="inp" data-pf="promo" placeholder="Ej. 2x1 en garrafones los martes">' + h(PF.promo || '') + '</textarea></div>' +
@@ -4144,7 +4158,7 @@ function sponsorModal(id) {
   if (p.contacto) links.push('<a class="btn" href="https://wa.me/52' + h(String(p.contacto).replace(/\D/g, '').slice(-10)) + '" target="_blank" rel="noopener">WhatsApp</a>');
   if (p.direccion) links.push('<a class="btn" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(p.nombre + ' ' + p.direccion) + '" target="_blank" rel="noopener">' + ICON.pin + 'Mapa</a>');
   if (p.ig) links.push('<a class="btn" href="' + h(/^https?:/.test(p.ig) ? p.ig : 'https://instagram.com/' + p.ig.replace('@', '')) + '" target="_blank" rel="noopener">Redes</a>');
-  modal('<div style="text-align:center"><div style="width:110px;height:110px;margin:0 auto 12px;border-radius:24px;overflow:hidden;border:1px solid var(--line2);box-shadow:var(--glow);background:#fff1;display:grid;place-items:center">' + (p.logo ? '<img src="' + h(p.logo) + '" style="width:100%;height:100%;object-fit:contain">' : '<span class="disp" style="font-size:34px">' + h(ini(p.nombre)) + '</span>') + '</div><h3>' + h(p.nombre) + '</h3></div>' +
+  modal(adsHTML(p) + '<div style="text-align:center"><div style="width:110px;height:110px;margin:0 auto 12px;border-radius:24px;overflow:hidden;border:1px solid var(--line2);box-shadow:var(--glow);background:#fff1;display:grid;place-items:center">' + (p.logo ? '<img src="' + h(p.logo) + '" style="width:100%;height:100%;object-fit:contain">' : '<span class="disp" style="font-size:34px">' + h(ini(p.nombre)) + '</span>') + '</div><h3>' + h(p.nombre) + '</h3></div>' +
     (p.promo ? '<div class="card glow" style="white-space:pre-wrap;margin-bottom:10px"><div class="xs" style="color:var(--neon);letter-spacing:.2em;margin-bottom:6px">PROMOCIONES</div>' + h(p.promo) + '</div>' : '') +
     (p.desc ? '<div class="sm" style="white-space:pre-wrap;line-height:1.5;color:var(--muted)">' + h(p.desc) + '</div>' : '') +
     '<div class="col" style="margin-top:12px;gap:4px">' + (p.direccion ? '<div class="sm">📍 ' + h(p.direccion) + '</div>' : '') + (p.contacto ? '<div class="sm">📞 ' + h(p.contacto) + '</div>' : '') + (p.web ? '<div class="sm">🌐 ' + h(p.web) + '</div>' : '') + '</div>' +
@@ -5587,7 +5601,7 @@ function poFieldsHTML(L) {
 var SB = null;
 function sbList(t, cat) {
   return matchesOf(t.id, cat).filter(function (m) { return m.pa && m.pb && m.estado !== 'bye' && m.estado !== 'fin'; })
-    .sort(function (a, b) { return String(a.fecha || '').localeCompare(String(b.fecha || '')) || String(a.hora || '').localeCompare(String(b.hora || '')) || (a.turno || 0) - (b.turno || 0) || (a.cancha || 0) - (b.cancha || 0); });
+    .sort(function (a, b) { return String(a.fecha || t.fecha || '').localeCompare(String(b.fecha || t.fecha || '')) || String(a.hora || '').localeCompare(String(b.hora || '')) || (a.turno || 0) - (b.turno || 0) || (a.cancha || 0) - (b.cancha || 0); });
 }
 function sbPair(p) { return p ? pName(p.j1) + '/' + pName(p.j2) : '?'; }
 function fdShort(f) { if (!f) return ''; var p = String(f).split('-'); return p.length === 3 ? p[2] + '/' + p[1] : f; }
@@ -5730,7 +5744,7 @@ A.xlDown = function (el) {
   loadXLSX().then(function (XL) {
     busy(false);
     var ms = matchesOf(t.id).filter(function (m) { return m.estado !== 'bye' && m.estado !== 'fin' && (m.pa || m.pb || m.fase === 'elim'); })
-      .sort(function (a, b) { return (t.cats || []).indexOf(a.cat) - (t.cats || []).indexOf(b.cat) || (a.fase === 'elim') - (b.fase === 'elim') || String(a.fecha || '').localeCompare(String(b.fecha || '')) || String(a.hora || '').localeCompare(String(b.hora || '')) || (a.cancha || 0) - (b.cancha || 0); });
+      .sort(function (a, b) { return (t.cats || []).indexOf(a.cat) - (t.cats || []).indexOf(b.cat) || (a.fase === 'elim') - (b.fase === 'elim') || String(a.fecha || t.fecha || '').localeCompare(String(b.fecha || t.fecha || '')) || String(a.hora || '').localeCompare(String(b.hora || '')) || (a.cancha || 0) - (b.cancha || 0); });
     var rows = [XL_HEAD].concat(ms.map(function (m) {
       return [m.id, m.cat || '', faseTxt(m), m.fase === 'grupo' ? m.grupo || '' : m.fase === 'liga' ? m.jornada : (m.label || ''), m.pa ? sbPair(X.P[m.pa]) : 'Por definir', m.pb ? sbPair(X.P[m.pb]) : 'Por definir', dmy(m.fecha || t.fecha), m.hora || '', m.cancha || ''];
     }));
@@ -5867,6 +5881,74 @@ document.addEventListener('change', function (ev) {
   if (o === TF && k === 'jps' && !TF._durTouched) TF.dur = sugDur(TF);
   render();
 });
+
+// =================== IMÁGENES PUBLICITARIAS DE PATROCINADORES ===================
+A.pfAd = function () { PF.ads = PF.ads || []; pickImage(1200, true).then(function (d) { uploadMany(d.slice(0, 4 - PF.ads.length)).then(function (us) { PF.ads = PF.ads.concat(us); render(); }); }); };
+A.pfRmAd = function (el) { PF.ads.splice(+el.dataset.i, 1); render(); };
+function adsHTML(p) {
+  var a = (p && p.ads) || []; if (!a.length) return '';
+  var l = h(a.join('|'));
+  return '<div style="display:flex;gap:10px;overflow-x:auto;margin:-4px -4px 14px;padding:0 4px 4px">' + a.map(function (f, i) { return '<img src="' + h(f) + '" data-a="viewImg" data-l="' + l + '" data-i="' + i + '" style="width:' + (a.length > 1 ? '82%' : '100%') + ';flex:none;border-radius:16px;border:1px solid var(--line2);cursor:pointer" alt="">'; }).join('') + '</div>';
+}
+var AD_I = Math.floor(Math.random() * 1000);
+function adCardHTML() {
+  var L = [];
+  activeSponsors().forEach(function (p) { (p.ads || []).forEach(function (u) { L.push({ p: p, u: u }); }); });
+  if (!L.length) return '';
+  var x = L[AD_I % L.length];
+  return sec('Publicidad', '<span class="xs mut">' + h(x.p.nombre) + '</span>') + '<div class="card tap" style="padding:0;overflow:hidden" data-a="sponsor" data-id="' + x.p.id + '"><img src="' + h(x.u) + '" alt="" style="width:100%;display:block"></div>';
+}
+
+// =================== PIN PARA GUARDAR CAMBIOS ===================
+var PG = { until: 0 };
+function pinGate() {
+  if (!S.me || S.quiet || window.__CP_NOPIN || Date.now() < PG.until) return Promise.resolve();
+  return new Promise(function (res, rej) {
+    var old = document.getElementById('pinov'); if (old) old.remove();
+    var ov = document.createElement('div'); ov.id = 'pinov';
+    ov.innerHTML = '<div class="pinbox"><div style="font-size:30px">🔒</div><h3 style="margin:6px 0 2px">Confirma con tu PIN</h3><div class="xs mut" style="margin-bottom:14px">Para guardar este cambio escribe tu PIN de 6 dígitos.</div>' +
+      '<input class="inp pin" id="pgPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password">' +
+      '<div class="xs" id="pgErr" style="color:var(--bad);min-height:18px;margin-top:6px"></div>' +
+      '<label class="xs mut" style="display:flex;gap:8px;align-items:center;justify-content:center;margin:6px 0 4px;cursor:pointer"><input type="checkbox" id="pgKeep"> No volver a pedir por 10 minutos</label>' +
+      '<div class="acts"><button class="btn ghost" id="pgNo">Cancelar</button><button class="btn pri" id="pgOk">Confirmar</button></div></div>';
+    document.body.appendChild(ov);
+    var inp = ov.querySelector('#pgPin'), busyV = false;
+    setTimeout(function () { inp.focus(); }, 40);
+    function close() { ov.remove(); }
+    function go() {
+      if (busyV) return; var v = inp.value.replace(/\D/g, '');
+      if (v.length !== 6) { ov.querySelector('#pgErr').textContent = 'Escribe los 6 dígitos'; return; }
+      busyV = true; ov.querySelector('#pgOk').textContent = 'Revisando…';
+      api('verifyPin', S.token, v).then(function () {
+        PG.until = Date.now() + (ov.querySelector('#pgKeep').checked ? 600000 : 20000);
+        close(); res();
+      }).catch(function (e) { busyV = false; ov.querySelector('#pgOk').textContent = 'Confirmar'; inp.value = ''; inp.focus(); ov.querySelector('#pgErr').textContent = (e && e.message) || 'PIN incorrecto'; });
+    }
+    ov.querySelector('#pgOk').onclick = go;
+    ov.querySelector('#pgNo').onclick = function () { close(); var e = new Error('Cambio cancelado: no se guardó nada.'); toast(e.message, true); rej(e); };
+    inp.addEventListener('input', function () { if (inp.value.replace(/\D/g, '').length === 6) go(); });
+    inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') go(); ev.stopPropagation(); });
+  });
+}
+
+// =================== ASISTENTES DEL TORNEO ===================
+A.staffEdit = function (el) {
+  var t = X.T[el.dataset.id]; if (!ownT(t)) return;
+  var st = (t.staff || []).filter(function (i) { return X.J[i]; });
+  modal('<h3>Asistentes · ' + h(t.nombre) + '</h3><div class="xs mut" style="margin:-6px 0 12px">Un asistente te ayuda a administrar ' + (isLiga(t) ? 'esta liga' : 'este torneo') + ': captura resultados, horarios, parejas y grupos. No puede borrarlo ni agregar a otros asistentes. Primero debe registrarse como jugador con su celular.</div>' +
+    (st.length ? '<div class="card" style="padding:4px 12px;margin-bottom:12px">' + st.map(function (id) { var j = X.J[id]; return '<div class="li"><div class="ini">' + h(ini(j.nombre)) + '</div><div class="grow" style="min-width:0"><div class="b ell">' + h(j.nombre) + aliasTag(j) + '</div><div class="xs mut">' + h(j.tel || '') + (j.hasPin ? ' · con cuenta' : ' · <span style="color:var(--gold)">aún no crea su PIN</span>') + '</div></div><button class="btn sm bad" data-a="staffRm" data-t="' + t.id + '" data-id="' + id + '">Quitar</button></div>'; }).join('') + '</div>' : '<div class="sm mut" style="margin-bottom:12px">Aún no hay asistentes.</div>') +
+    '<div class="fld"><label>Agregar asistente</label>' + pickerHTML('stf', 'Nombre o celular del jugador') + '</div>' +
+    '<div class="acts"><button class="btn ghost" data-a="close">Cerrar</button></div>');
+  PK.stf = { exclude: function () { var e = {}; e[t.creador] = 1; st.forEach(function (i) { e[i] = 1; }); return e; }, pick: function (id) {
+    var j = X.J[id];
+    save('torneos', [Object.assign({}, t, { staff: st.concat([id]) })], j.nombre + ' ahora es asistente').then(function () { A.staffEdit({ dataset: { id: t.id } }); }).catch(function () {});
+  } };
+  setTimeout(function () { var i = $('[data-pkin="stf"]'); if (i) i.focus(); }, 60);
+};
+A.staffRm = function (el) {
+  var t = X.T[el.dataset.t], id = el.dataset.id;
+  save('torneos', [Object.assign({}, t, { staff: (t.staff || []).filter(function (x) { return x !== id; }) })], 'Asistente quitado').then(function () { A.staffEdit({ dataset: { id: t.id } }); }).catch(function () {});
+};
 
 // =================== EVENTOS ===================
 document.addEventListener('click', function (ev) {
@@ -6060,6 +6142,7 @@ try {
       await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, o));
       await updatePassword(u, n);
     },
+    verify: async (p) => { const u = auth.currentUser; await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, p)); },
     newId: c => doc(collection(db, c)).id,
     get: async (c, id) => { const s = await getDoc(doc(db, c, id)); return s.exists() ? Object.assign({ id: s.id }, s.data()) : null; },
     listen: (c, cb, err) => onSnapshot(collection(db, c),
